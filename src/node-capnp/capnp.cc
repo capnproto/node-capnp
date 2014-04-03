@@ -46,6 +46,7 @@
 #include <inttypes.h>
 #include <set>
 #include <stdlib.h>
+#include <sys/uio.h>
 
 #include <typeinfo>
 #include <typeindex>
