@@ -29,7 +29,12 @@ var spawn = require("child_process").spawn;
 
 var goldenBinary = fs.readFileSync("src/node-capnp/testdata/binary");
 
-var test = capnp.import("src/node-capnp/test.capnp");
+var test = require("./test.capnp");
+assert(test === capnp.import(__dirname + "/test.capnp"));
+assert(test === require("./test"));
+
+assert("namespace" in capnp.importSystem("capnp/c++.capnp"));
+
 var parsed = capnp.parse(test.TestAllTypes, goldenBinary);
 
 var roundTripped = capnp.serialize(test.TestAllTypes, parsed);

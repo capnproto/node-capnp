@@ -18,7 +18,7 @@
 
   "main": "src/node-capnp/capnp.js",
   "dependencies": {
-    "es6-promise": "0.1.1"
+    "es6-promise": ">=0.1.1"
   },
   "scripts": {
     "install": "node ./build.js",

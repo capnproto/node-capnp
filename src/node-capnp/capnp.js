@@ -57,6 +57,10 @@ importPath.push("/usr/local/include");
 importPath.push("/usr/include");
 
 exports.import = function (filename) {
+  return v8capnp.import(filename, filename, importPath);
+}
+
+exports.importSystem = function (filename) {
   for (var i in importPath) {
     var candidate = path.join(importPath[i], filename);
     if (fs.existsSync(candidate)) {
@@ -64,6 +68,10 @@ exports.import = function (filename) {
     }
   }
   throw new Error("Cap'n Proto schema not found in module path: " + filename);
+}
+
+require.extensions[".capnp"] = function (module, filename) {
+  module.exports = v8capnp.import(filename, filename, importPath);
 }
 
 function makeRemotePromise(promise, pipeline) {
