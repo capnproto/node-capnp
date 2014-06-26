@@ -147,7 +147,7 @@ function wrapLocalMethod(self, method) {
   return function (request) {
     var params = v8capnp.toJsParams(request, Capability);
     v8capnp.releaseParams(request);
-    Promise.cast(method.apply(self, params)).then(function (results) {
+    Promise.resolve(method.apply(self, params)).then(function (results) {
       if (typeof results !== "object") {
         if (results === undefined) {
           results = [];
