@@ -6,8 +6,8 @@
   "homepage": "http://capnproto.org",
   "author": {
     "name": "Kenton Varda",
-    "email": "temporal@gmail.com",
-    "url": "http://kentonvarda.com"
+    "email": "kenton@sandstorm.io",
+    "url": "https://sandstorm.io"
   },
   "contributors": [
     {
@@ -28,5 +28,5 @@
     "type": "git",
     "url": "git://github.com/kentonv/node-capnp.git"
   },
-  "license": "BSD-2-Clause"
+  "license": "MIT"
 }
