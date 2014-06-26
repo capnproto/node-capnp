@@ -828,7 +828,8 @@ template <typename T>
 v8::Handle<v8::Value> wrapBuffer(kj::Array<T>&& array) {
   char* data = reinterpret_cast<char*>(array.begin());
   size_t size = array.size() * sizeof(T);
-  return node::Buffer::New(data, size, &deleteArray<T>, new kj::Array<T>(kj::mv(array)))->handle_;
+  return v8::Local<v8::Object>::New(
+      node::Buffer::New(data, size, &deleteArray<T>, new kj::Array<T>(kj::mv(array)))->handle_);
 }
 
 // =======================================================================================
@@ -1418,7 +1419,8 @@ v8::Handle<v8::Value> valueToJs(CapnpContext& context, capnp::DynamicValue::Read
     }
     case capnp::DynamicValue::DATA: {
       capnp::Data::Reader data = value.as<capnp::Data>();
-      return node::Buffer::New(reinterpret_cast<const char*>(data.begin()), data.size())->handle_;
+      return v8::Local<v8::Object>::New(
+          node::Buffer::New(reinterpret_cast<const char*>(data.begin()), data.size())->handle_);
     }
     case capnp::DynamicValue::LIST: {
       v8::HandleScope scope;
@@ -2046,6 +2048,61 @@ v8::Handle<v8::Value> newCap(const v8::Arguments& args) {
   });
 }
 
+v8::Handle<v8::Value> newPromisedCap(const v8::Arguments& args) {
+  // newPromisedCap(schema) -> { cap, fulfiller }
+  //
+  // Creates a capability whose endpoint is not yet known. Calls are held in a queue until
+  // `fulfiller` is fulfilled via `fulfillPromisedCap` or `rejectPromisedCap`.
+
+  KJV8_UNWRAP(CapnpContext, context, args.Data());
+  KJV8_UNWRAP(capnp::Schema, schema, args[0]);
+  if (!schema.getProto().isInterface()) {
+    KJV8_TYPE_ERROR(schema, capnp::InterfaceSchema);
+  }
+
+  return liftKj([&]() -> v8::Handle<v8::Value> {
+    auto paf = kj::newPromiseAndFulfiller<capnp::Capability::Client>();
+
+    v8::Local<v8::Object> result = v8::Object::New();
+    result->Set(v8::String::NewSymbol("cap"),
+        context.wrapper.wrapCopy(
+            capnp::Capability::Client(kj::mv(paf.promise))
+                .castAs<capnp::DynamicCapability>(schema.asInterface())));
+    result->Set(v8::String::NewSymbol("fulfiller"),
+        context.wrapper.wrapCopy(kj::mv(paf.fulfiller)));
+    return result;
+  });
+}
+
+v8::Handle<v8::Value> fulfillPromisedCap(const v8::Arguments& args) {
+  // fulfillPromisedCap(fulfiller, cap)
+  //
+  // Fulfills a promise created by a previous call to `newPromisedCap()`.
+
+  KJV8_UNWRAP(CapnpContext, context, args.Data());
+  KJV8_UNWRAP(kj::Own<kj::PromiseFulfiller<capnp::Capability::Client>>, fulfiller, args[0]);
+  KJV8_UNWRAP(capnp::DynamicCapability::Client, cap, args[1]);
+
+  return liftKj([&]() -> v8::Handle<v8::Value> {
+    fulfiller->fulfill(kj::mv(cap));
+    return v8::Undefined();
+  });
+}
+
+v8::Handle<v8::Value> rejectPromisedCap(const v8::Arguments& args) {
+  // rejectPromisedCap(fulfiller, error)
+  //
+  // Rejects a promise created by a previous call to `newPromisedCap()`.
+
+  KJV8_UNWRAP(CapnpContext, context, args.Data());
+  KJV8_UNWRAP(kj::Own<kj::PromiseFulfiller<capnp::Capability::Client>>, fulfiller, args[0]);
+
+  return liftKj([&]() -> v8::Handle<v8::Value> {
+    fulfiller->reject(fromJsException(args[1]));
+    return v8::Undefined();
+  });
+}
+
 v8::Handle<v8::Value> isCap(const v8::Arguments& args) {
   // isCap(value) -> boolean
   //
@@ -2170,6 +2227,9 @@ void init(v8::Handle<v8::Object> exports) {
     mapFunction("send", send);
     mapFunction("cancel", cancel);
     mapFunction("newCap", newCap);
+    mapFunction("newPromisedCap", newPromisedCap);
+    mapFunction("fulfillPromisedCap", fulfillPromisedCap);
+    mapFunction("rejectPromisedCap", rejectPromisedCap);
     mapFunction("isCap", isCap);
     mapFunction("releaseParams", releaseParams);
     mapFunction("getResults", getResults);

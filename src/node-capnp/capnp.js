@@ -180,7 +180,17 @@ function LocalCapWrapper(obj) {
 function Capability(native, schema) {
   // If `native` is actually a local object, wrap it as a capability.
   if (!v8capnp.isCap(native)) {
-    native = v8capnp.newCap(schema, new LocalCapWrapper(native));
+    if (native instanceof Promise) {
+      // Oh, it's a promise. Wrap it in a capability.
+      var promisedCap = v8capnp.newPromisedCap(schema);
+      var fulfiller = promisedCap.fulfiller;
+      native.then(v8capnp.fulfillPromisedCap.bind(this, fulfiller))
+            .catch(v8capnp.rejectPromisedCap.bind(this, fulfiller));
+      native = promisedCap.cap;
+    } else {
+      // Local object.
+      native = v8capnp.newCap(schema, new LocalCapWrapper(native));
+    }
   }
 
   v8capnp.setNative(this, native);

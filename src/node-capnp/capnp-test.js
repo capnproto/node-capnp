@@ -127,9 +127,39 @@ child.stdio[1].once("readable", function() {
     assert.equal(16, wait(value.read()).value);
     value.close();
 
+    // Try wrapping a promise as a capability -- calls are queued until resolution.
+    var resolvePromisedCalc;
+    var promisedCalc = new capnp.Capability(new Promise(function (resolve, reject) {
+      resolvePromisedCalc = resolve;
+    }), Calculator);
+
+    value = promisedCalc.evaluate(
+        {call: {"function": add, params: [
+            {literal: 123}, {literal: 321}]}}).value;
+    promise = value.read();
+    resolvePromisedCalc(calc);
+    assert.equal(444, wait(promise).value);
+    value.close();
+
+    // Like above, but reject the promise so queued calls fail.
+    var rejectPromisedCalc;
+    promisedCalc = new capnp.Capability(new Promise(function (resolve, reject) {
+      rejectPromisedCalc = reject;
+    }), Calculator);
+
+    value = promisedCalc.evaluate(
+        {call: {"function": add, params: [
+            {literal: 123}, {literal: 321}]}}).value;
+    promise = value.read();
+    rejectPromisedCalc(new Error("foo example error"));
+    assert.throws(function() { wait(promise); }, /foo example error/);
+    value.close();
+
     add.close();
     subtract.close();
     conn.close();
+
+    console.log("rpc: pass");
   }, child);
 });
 */
