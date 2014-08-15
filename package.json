@@ -1,6 +1,6 @@
 {
   "name": "capnp",
-  "version": "0.1.3",
+  "version": "0.1.4",
   "description": "A wrapper for the C++ Cap'n Proto library",
   "keywords": [ "capnproto", "serialization" ],
   "homepage": "http://capnproto.org",
@@ -17,8 +17,8 @@
   ],
 
   "main": "src/node-capnp/capnp.js",
-  "dependencies": {
-    "es6-promise": "1.0.x"
+  "peerDependencies": {
+    "es6-promise": "1.x"
   },
   "scripts": {
     "install": "node ./build.js",
