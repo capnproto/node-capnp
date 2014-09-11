@@ -106,11 +106,23 @@ function settleCaps(pipeline, final) {
 
       if (pmember instanceof Capability) {
         // If pipelined capability was closed, close the final cap.
-        // Otherwise, overwrite the pipelined cap with the final cap.
+        // Otherwise, merge the two caps so closing either one closes both.
         if (pmember.closed) {
           fmember.close();
         } else {
+          // This is tricky. We have two capabilities that ultimately point to the same place, but
+          // we don't want the user to have to close both independently. We want to end up with one
+          // capability object. However, pmember has already been out and about, so application
+          // code might already be holding a reference to it. We can use dup2() to redirect the
+          // reference to the new capability instead, but we still end up with two capabilities
+          // that each need closing.
+          //
+          // Luckily, fmember has NOT been passed to application code yet. So we can actually close
+          // it, and then replace the slot in the parent object. Application code will never know
+          // the difference. Hah!
           v8capnp.dup2(fmember, pmember);
+          fmember.close();
+          final[name] = pmember;
         }
       } else {
         // Recurse into struct.
@@ -135,6 +147,7 @@ function makeMethod(cap, method) {
       pipeline = v8capnp.send(req, resolve, reject, Capability);
     }).then(function (response) {
       var result = v8capnp.toJs(response, Capability);
+      v8capnp.release(response);
       settleCaps(pipeline, result);
       return result;
     });

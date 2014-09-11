@@ -969,6 +969,11 @@ v8::Handle<v8::Value> methods(const v8::Arguments& args) {
   });
 }
 
+struct ClientRequest {
+  kj::Maybe<capnp::Request<capnp::DynamicStruct, capnp::DynamicStruct>> request;
+  // Becomes null when sent.
+};
+
 struct StructBuilder {
   capnp::MallocMessageBuilder message;
   capnp::DynamicStruct::Builder root;
@@ -989,10 +994,13 @@ struct ServerResults: public kj::Refcounted {
 
 kj::Maybe<capnp::DynamicStruct::Builder> unwrapBuilder(v8::Handle<v8::Value> handle) {
   // We accept either StructBuilder or Request<DynamicStruct, DynamicStruct>.
-  typedef capnp::Request<capnp::DynamicStruct, capnp::DynamicStruct> Request;
   capnp::DynamicStruct::Builder builder;
-  KJ_IF_MAYBE(request, Wrapper::tryUnwrap<Request>(handle)) {
-    return *request;
+  KJ_IF_MAYBE(request, Wrapper::tryUnwrap<ClientRequest>(handle)) {
+    return request->request.map(
+        [](capnp::Request<capnp::DynamicStruct, capnp::DynamicStruct>& inner)
+        -> capnp::DynamicStruct::Builder {
+      return inner;
+    });
   } else KJ_IF_MAYBE(builder, Wrapper::tryUnwrap<StructBuilder>(handle)) {
     return builder->root;
   } else KJ_IF_MAYBE(results, Wrapper::tryUnwrap<kj::Own<ServerResults>>(handle)) {
@@ -1006,6 +1014,11 @@ kj::Maybe<capnp::DynamicStruct::Builder> unwrapBuilder(v8::Handle<v8::Value> han
   auto name##_maybe = unwrapBuilder(exp); \
   if (name##_maybe == nullptr) KJV8_TYPE_ERROR(name, capnp::DynamicStruct::Builder); \
   capnp::DynamicStruct::Builder& name = KJ_ASSERT_NONNULL(name##_maybe)
+
+struct ClientResponse {
+  kj::Maybe<capnp::Response<capnp::DynamicStruct>> response;
+  // Becomes null when released.
+};
 
 struct StructReader {
   capnp::FlatArrayMessageReader message;
@@ -1032,9 +1045,12 @@ struct ServerRequest {
 
 kj::Maybe<capnp::DynamicStruct::Reader> unwrapReader(v8::Handle<v8::Value> handle) {
   // We accept any builder as well as Response<DynamicStruct>.
-  typedef capnp::Response<capnp::DynamicStruct> Response;
-  KJ_IF_MAYBE(response, Wrapper::tryUnwrap<Response>(handle)) {
-    return *response;
+  KJ_IF_MAYBE(response, Wrapper::tryUnwrap<ClientResponse>(handle)) {
+    return response->response.map(
+        [](capnp::Response<capnp::DynamicStruct>& inner)
+        -> capnp::DynamicStruct::Reader {
+      return inner;
+    });
   } else KJ_IF_MAYBE(reader, Wrapper::tryUnwrap<StructReader>(handle)) {
     return reader->root;
   } else KJ_IF_MAYBE(request, Wrapper::tryUnwrap<ServerRequest>(handle)) {
@@ -1768,6 +1784,20 @@ v8::Handle<v8::Value> closeCap(const v8::Arguments& args) {
   });
 }
 
+v8::Handle<v8::Value> release(const v8::Arguments& args) {
+  // release(response) -> void
+  //
+  // Release a client-side response object, thus releasing all contained capabilities. Any further
+  // attempt to use the response (e.g. with toJs()) will throw a type error.
+
+  KJV8_UNWRAP(ClientResponse, response, args[0]);
+
+  return liftKj([&]() -> v8::Handle<v8::Value> {
+    response.response = nullptr;
+    return v8::Undefined();
+  });
+}
+
 v8::Handle<v8::Value> dupCap(const v8::Arguments& args) {
   // dup(cap) -> cap
   //
@@ -1808,7 +1838,7 @@ v8::Handle<v8::Value> request(const v8::Arguments& args) {
   KJV8_UNWRAP(capnp::InterfaceSchema::Method, method, args[1]);
 
   return liftKj([&]() -> v8::Handle<v8::Value> {
-    return context.wrapper.wrapCopy(cap.newRequest(method));
+    return context.wrapper.wrapCopy(ClientRequest { cap.newRequest(method) });
   });
 }
 
@@ -1894,8 +1924,7 @@ v8::Handle<v8::Value> send(const v8::Arguments& args) {
   // CapType is the constructor for a capability wrapper; see toJs().
 
   KJV8_UNWRAP(CapnpContext, context, args.Data());
-  typedef capnp::Request<capnp::DynamicStruct, capnp::DynamicStruct> Request;
-  KJV8_UNWRAP(Request, request, args[0]);
+  KJV8_UNWRAP(ClientRequest, request, args[0]);
 
   return liftKj([&]() -> v8::Handle<v8::Value> {
     if (!args[1]->IsFunction() || !args[2]->IsFunction()) {
@@ -1905,7 +1934,8 @@ v8::Handle<v8::Value> send(const v8::Arguments& args) {
     OwnHandle<v8::Function> callback = v8::Handle<v8::Function>(v8::Function::Cast(*args[1]));
     OwnHandle<v8::Function> errorCallback = v8::Handle<v8::Function>(v8::Function::Cast(*args[2]));
 
-    auto promise = request.send();
+    auto promise = KJ_REQUIRE_NONNULL(request.request, "Request already sent.").send();
+    request.request = nullptr;
 
     auto cancelerPaf = kj::newPromiseAndFulfiller<capnp::Response<capnp::DynamicStruct>>();
 
@@ -1922,7 +1952,9 @@ v8::Handle<v8::Value> send(const v8::Arguments& args) {
           [&context](OwnHandle<v8::Function>&& callback,
                      capnp::Response<capnp::DynamicStruct>&& response) {
       v8::HandleScope scope;
-      v8::Handle<v8::Value> args[1] = { context.wrapper.wrapCopy(kj::mv(response)) };
+      v8::Handle<v8::Value> args[1] = {
+        context.wrapper.wrapCopy(ClientResponse { kj::mv(response) })
+      };
       // TODO(cleanup):  Call() demands an Object parameter but `undefined` is not an object.  So
       //   we pass an empty object.  Can we do better?
       v8::TryCatch tryCatch;
@@ -2219,6 +2251,7 @@ void init(v8::Handle<v8::Object> exports) {
     mapFunction("castAs", castAs);
     mapFunction("schemaFor", schemaFor);
     mapFunction("close", closeCap);
+    mapFunction("release", release);
     mapFunction("dup", dupCap);
     mapFunction("dup2", dup2Cap);
     mapFunction("request", request);
