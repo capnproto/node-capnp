@@ -2011,6 +2011,24 @@ public:
       : capnp::DynamicCapability::Server(schema),
         object(object), capnpContext(capnpContext), capnpContextHandle(capnpContextHandle) {}
 
+  ~LocalCap() {
+    // Call the object's close() method if it has one, so that it can react to the handle being
+    // dropped.
+
+    v8::HandleScope scope;
+
+    auto jsMethod = object->Get(v8::String::NewSymbol("close"));
+    if (jsMethod->IsFunction()) {
+      auto func = v8::Function::Cast(*jsMethod);
+      v8::TryCatch tryCatch;
+      func->Call(object.get(), 0, nullptr);
+      if (tryCatch.HasCaught()) {
+        KJ_LOG(ERROR, "Uncaught exception in capability close() method.",
+            fromJsException(tryCatch.Exception()));
+      }
+    }
+  }
+
   kj::Promise<void> call(capnp::InterfaceSchema::Method method,
       capnp::CallContext<capnp::DynamicStruct, capnp::DynamicStruct> context) override {
     v8::HandleScope scope;

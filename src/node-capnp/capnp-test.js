@@ -44,7 +44,9 @@ assert.equal(goldenBinary.toString("base64"), canon.toString("base64"), "Round t
 
 // =======================================================================================
 
-/* TODO(someday):  Revive this test.
+/*
+// TODO(someday): Revive this test. The main problem is that it depends on calculator-server from
+//   the Cap'n Proto samples directory.
 
 var Fiber = require("fibers");
 
@@ -103,12 +105,18 @@ child.stdio[1].once("readable", function() {
     var pow = {
       call: function (params) {
         return Math.pow(params[0], params[1]);
-      }
+      },
+      close: function () {
+        this.closed = true;
+      },
+      closed: false
     };
 
     var localCap = new capnp.Capability(pow, Calculator.Function);
     assert.equal(9, wait(localCap.call([3, 2])).value);
+    assert(!pow.closed);
     localCap.close();
+    assert(pow.closed);
 
     var promise = calc.evaluate(
         {call: {"function": subtract, params: [
@@ -120,9 +128,11 @@ child.stdio[1].once("readable", function() {
     assert.equal(258, wait(value.read()).value);
     value.close();
 
+    pow.closed = false;
     value = calc.evaluate(
         {call: {"function": pow, params: [{literal: 2}, {literal: 4}]}}).value;
     assert.equal(16, wait(value.read()).value);
+    assert(pow.closed);  // Not kept past return.
     value.close();
 
     // Try wrapping a promise as a capability -- calls are queued until resolution.

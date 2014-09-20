@@ -135,6 +135,66 @@ Create a Javascript object with methods corresponding to the interface, and
 just pass that object anywhere where a capability is expected.  Methods can
 return promises.
 
+For instance, given:
+
+    interface Foo {
+      foo @0 (a: Text, b: Int32) -> (c: Text);
+    }
+
+    interface Bar {
+      bar @0 (foo :Foo) -> ();
+    }
+
+You could write:
+
+    // Implement the Foo interface.
+    var myFoo = {
+      foo: function (a, b) {
+        return {c: "blah"};
+      }
+    }
+
+    // Use it in a call.
+    someBar.bar(myFoo).send();
+
+Cap'n Proto protocols often depend on explicit notification when there are
+no more references to an object. In C++ this would be accomplished by
+implementing a destructor, but of course Javascript is garbage collected.
+Instead, you may give your object a `close()` method, which will be called
+as soon as there are no more references.
+
+    var myFoo = {
+      foo: function (a, b) {
+        return {c: "blah"};
+      },
+      close: () {
+        console.log("client disconnected");
+      }
+    }
+
+Note, however, that `close()` will be called once for every time your
+native object is coerced to a capability. So, if you did:
+
+    someBar.bar(myFoo).send();
+    someBar.bar(myFoo).send();
+
+Then `myFoo.close()` will eventually be called twice. To prevent this,
+you can explicitly convert your object to a capability once upfront, and
+then use that:
+
+    var cap = new capnp.Capability(myFoo, mySchema.Foo);
+
+    someBar.bar(cap).send();
+    someBar.bar(cap).send();
+
+    // Close our own copy of the reference. Note that this does not
+    // necessarily call `myFoo.close()` -- that happens only after the
+    // two copies passed to the `bar()` calls above have also been closed.
+    cap.close();
+
+In this case, the library only wraps `myFoo` as a capability once, and then
+calls `close()` once all copies of that reference have been dropped.
+
 ### Accepting RPC connections
 
 Not implemented.  Currently you can only be a client, not a server.  (But you

@@ -181,9 +181,14 @@ function wrapLocalMethod(self, method) {
 
 function LocalCapWrapper(obj) {
   for (var name in obj) {
-    var method = obj[name];
-    if (typeof method === "function") {
-      this[name] = wrapLocalMethod(obj, method);
+    if (name === "close") {
+      // Not an RPC method. Called when the capability has no clients.
+      this.close = obj.close.bind(obj);
+    } else {
+      var method = obj[name];
+      if (typeof method === "function") {
+        this[name] = wrapLocalMethod(obj, method);
+      }
     }
   }
 }
