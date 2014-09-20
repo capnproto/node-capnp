@@ -155,7 +155,7 @@ You could write:
     }
 
     // Use it in a call.
-    someBar.bar(myFoo).send();
+    someBar.bar(myFoo);
 
 Cap'n Proto protocols often depend on explicit notification when there are
 no more references to an object. In C++ this would be accomplished by
@@ -175,8 +175,8 @@ as soon as there are no more references.
 Note, however, that `close()` will be called once for every time your
 native object is coerced to a capability. So, if you did:
 
-    someBar.bar(myFoo).send();
-    someBar.bar(myFoo).send();
+    someBar.bar(myFoo);
+    someBar.bar(myFoo);
 
 Then `myFoo.close()` will eventually be called twice. To prevent this,
 you can explicitly convert your object to a capability once upfront, and
@@ -184,8 +184,8 @@ then use that:
 
     var cap = new capnp.Capability(myFoo, mySchema.Foo);
 
-    someBar.bar(cap).send();
-    someBar.bar(cap).send();
+    someBar.bar(cap);
+    someBar.bar(cap);
 
     // Close our own copy of the reference. Note that this does not
     // necessarily call `myFoo.close()` -- that happens only after the
