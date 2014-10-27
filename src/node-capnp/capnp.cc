@@ -930,9 +930,19 @@ void enumerateMethods(capnp::InterfaceSchema schema, v8::Handle<v8::Object> meth
                       CapnpContext& context, std::set<uint64_t>& seen) {
   auto proto = schema.getProto();
   if (seen.insert(proto.getId()).second) {
+#if CAPNP_VERSION < 5000
     for (uint64_t superId: proto.getInterface().getExtends()) {
       enumerateMethods(schema.getDependency(superId).asInterface(), methodMap, context, seen);
     }
+#else
+    // IF YOU GET A COMPILER ERROR HERE it may be because you are using a version of Cap'n Proto
+    // pulled directly from git which you haven't updated recently. Please make sure your
+    // Cap'n Proto sources are newer than Oct 27, 2014 or use a release version of Cap'n Proto
+    // instead.
+    for (auto superclass: schema.getSuperclasses()) {
+      enumerateMethods(superclass, methodMap, context, seen);
+    }
+#endif
 
     auto methods = schema.getMethods();
     for (auto method: methods) {
@@ -1152,9 +1162,15 @@ struct FromJsConverter {
     }
   }
 
+#if CAPNP_VERSION < 5000
   capnp::Orphan<capnp::DynamicValue> orphanFromJs(
       capnp::StructSchema::Field field, capnp::Orphanage orphanage,
       capnp::schema::Type::Reader type, v8::Handle<v8::Value> js) {
+#else
+  capnp::Orphan<capnp::DynamicValue> orphanFromJs(
+      capnp::StructSchema::Field field, capnp::Orphanage orphanage,
+      capnp::Type type, v8::Handle<v8::Value> js) {
+#endif
     switch (type.which()) {
       case capnp::schema::Type::VOID:
         // Accept any false-y value.
@@ -1188,8 +1204,13 @@ struct FromJsConverter {
       case capnp::schema::Type::LIST: {
         if (js->IsArray()) {
           v8::Array* jsArray = v8::Array::Cast(*js);
+#if CAPNP_VERSION < 5000
           auto elementType = type.getList().getElementType();
           auto schema = capnp::ListSchema::of(elementType, field.getContainingStruct());
+#else
+          auto schema = type.asList();
+          auto elementType = schema.getElementType();
+#endif
           auto orphan = orphanage.newOrphan(schema, jsArray->Length());
           auto builder = orphan.get();
           if (elementType.isStruct()) {
@@ -1224,7 +1245,11 @@ struct FromJsConverter {
       case capnp::schema::Type::ENUM: {
         v8::HandleScope scope;  // for string conversion
         KJV8_STACK_STR(name, js, 32);
+#if CAPNP_VERSION < 5000
         auto schema = field.getContainingStruct().getDependency(type.getEnum().getTypeId()).asEnum();
+#else
+        auto schema = type.asEnum();
+#endif
         KJ_IF_MAYBE(enumerant, schema.findEnumerantByName(name)) {
           return capnp::DynamicEnum(*enumerant);
         } else if (js->IsUint32()) {
@@ -1236,18 +1261,27 @@ struct FromJsConverter {
         KJ_IF_MAYBE(reader, unwrapReader(js)) {
           return orphanage.newOrphanCopy(*reader);
         } else if (js->IsObject()) {
+#if CAPNP_VERSION < 5000
           auto schema = field.getContainingStruct().getDependency(
               type.getStruct().getTypeId()).asStruct();
+#else
+          auto schema = type.asStruct();
+#endif
           auto orphan = orphanage.newOrphan(schema);
           if (!structFromJs(orphan.get(), v8::Object::Cast(*js))) {
             return nullptr;
           }
           return kj::mv(orphan);
         }
+        break;
       }
       case capnp::schema::Type::INTERFACE: {
+#if CAPNP_VERSION < 5000
         auto schema = field.getContainingStruct().getDependency(
             type.getInterface().getTypeId()).asInterface();
+#else
+        auto schema = type.asInterface();
+#endif
         if (js->IsNull()) {
           auto cap = capnp::Capability::Client(nullptr)
               .castAs<capnp::DynamicCapability>(schema);
@@ -1296,8 +1330,13 @@ struct FromJsConverter {
     auto proto = field.getProto();
     switch (proto.which()) {
       case capnp::schema::Field::SLOT: {
+#if CAPNP_VERSION < 5000
         capnp::Orphan<capnp::DynamicValue> value = orphanFromJs(field,
             capnp::Orphanage::getForMessageContaining(builder), proto.getSlot().getType(), js);
+#else
+        capnp::Orphan<capnp::DynamicValue> value = orphanFromJs(field,
+            capnp::Orphanage::getForMessageContaining(builder), field.getType(), js);
+#endif
         if (value.getType() == capnp::DynamicValue::UNKNOWN) {
           return false;
         }
