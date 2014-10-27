@@ -1,6 +1,6 @@
 {
   "name": "capnp",
-  "version": "0.1.6",
+  "version": "0.1.7",
   "description": "A wrapper for the C++ Cap'n Proto library",
   "keywords": [ "capnproto", "serialization" ],
   "homepage": "http://capnproto.org",
