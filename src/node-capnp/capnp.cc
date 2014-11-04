@@ -1673,20 +1673,33 @@ public:
 
   capnp::Capability::Client import(kj::StringPtr ref) {
     capnp::MallocMessageBuilder builder;
-    auto root = builder.getRoot<capnp::rpc::SturdyRef>();
-    auto hostId = root.getHostId().initAs<capnp::rpc::twoparty::SturdyRefHostId>();
+    auto hostIdOrphan = builder.getOrphanage().newOrphan<capnp::rpc::twoparty::SturdyRefHostId>();
+    auto hostId = hostIdOrphan.get();
     hostId.setSide(capnp::rpc::twoparty::Side::SERVER);
-    root.getObjectId().setAs<capnp::Text>(ref);
+    auto objectId = builder.getRoot<capnp::AnyPointer>();
+    objectId.setAs<capnp::Text>(ref);
 
-    return rpcSystem.restore(hostId, root.getObjectId());
+    return rpcSystem.restore(hostId, objectId);
   }
 
   capnp::Capability::Client importDefault() {
+#if CAPNP_VERSION < 5000
     capnp::MallocMessageBuilder builder;
     auto root = builder.getRoot<capnp::rpc::SturdyRef>();
     auto hostId = root.getHostId().initAs<capnp::rpc::twoparty::SturdyRefHostId>();
     hostId.setSide(capnp::rpc::twoparty::Side::SERVER);
     return rpcSystem.restore(hostId, root.getObjectId());
+#else
+    capnp::MallocMessageBuilder builder;
+    auto hostId = builder.initRoot<capnp::rpc::twoparty::SturdyRefHostId>();
+    hostId.setSide(capnp::rpc::twoparty::Side::SERVER);
+
+    // IF YOU GET A COMPILER ERROR HERE it may be because you are using a version of Cap'n Proto
+    // pulled directly from git which you haven't updated recently. Please make sure your
+    // Cap'n Proto sources are newer than Nov 4, 2014 or use a release version of Cap'n Proto
+    // instead.
+    return rpcSystem.bootstrap(hostId);
+#endif
   }
 
   kj::Own<RpcConnection> addRef() {
