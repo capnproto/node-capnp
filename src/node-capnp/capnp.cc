@@ -651,6 +651,7 @@ v8::Local<v8::Value> toJsException(kj::Exception&& exception) {
     obj->Set(v8::String::NewSymbol("cppFile"), v8::String::New(exception.getFile()));
     obj->Set(v8::String::NewSymbol("line"), v8::Int32::New(exception.getLine()));
 
+#if CAPNP_VERSION < 5000
     const char* nature = "unknown";
     switch (exception.getNature()) {
       case kj::Exception::Nature::PRECONDITION   : nature = "precondition"  ; break;
@@ -668,6 +669,20 @@ v8::Local<v8::Value> toJsException(kj::Exception&& exception) {
       case kj::Exception::Durability::OVERLOADED: durability = "overloaded"; break;
     }
     obj->Set(v8::String::NewSymbol("durability"), v8::String::NewSymbol(durability));
+#else
+    const char* type = "unknown";
+    // IF YOU GET A COMPILER ERROR HERE it may be because you are using a version of Cap'n Proto
+    // pulled directly from git which you haven't updated recently. Please make sure your
+    // Cap'n Proto sources are newer than Nov 29, 2014 or use a release version of Cap'n Proto
+    // instead.
+    switch (exception.getType()) {
+      case kj::Exception::Type::FAILED        : type = "failed"       ; break;
+      case kj::Exception::Type::OVERLOADED    : type = "overloaded"   ; break;
+      case kj::Exception::Type::DISCONNECTED  : type = "disconnected" ; break;
+      case kj::Exception::Type::UNIMPLEMENTED : type = "unimplemented"; break;
+    }
+    obj->Set(v8::String::NewSymbol("type"), v8::String::NewSymbol(type));
+#endif
   } else {
     KJ_LOG(WARNING, "v8 exception is not an object?");
   }
@@ -676,19 +691,45 @@ v8::Local<v8::Value> toJsException(kj::Exception&& exception) {
 }
 
 kj::Exception fromJsException(v8::Handle<v8::Value> exception) {
+#if CAPNP_VERSION < 5000
   // TODO(soon):  Check for "nature", "durability", etc. fields and use them to construct the
   // exception.
   return kj::Exception(
         kj::Exception::Nature::OTHER,
         kj::Exception::Durability::PERMANENT,
         __FILE__, __LINE__, toKjString(exception));
+#else
+  kj::Exception::Type type = kj::Exception::Type::FAILED;
+
+  if (exception->IsObject()) {
+    v8::HandleScope scope;
+    v8::Object* obj = v8::Object::Cast(*exception);
+    v8::Handle<v8::Value> value = obj->Get(v8::String::NewSymbol("type"));
+    if (!value.IsEmpty() && !value->IsUndefined()) {
+      auto name = toKjString(value);
+      if (name == "overloaded") {
+        type = kj::Exception::Type::OVERLOADED;
+      } else if (name == "disconnected") {
+        type = kj::Exception::Type::DISCONNECTED;
+      } else if (name == "unimplemented") {
+        type = kj::Exception::Type::UNIMPLEMENTED;
+      }
+    }
+  }
+
+  return kj::Exception(type, "(javascript)", 0, toKjString(exception));
+#endif
 }
 
 EmptyHandle throwTypeError(kj::StringPtr name, const std::type_info& type,
                            const char* func, const char* file, int line) {
+#if CAPNP_VERSION < 5000
   kj::Exception exception(
       kj::Exception::Nature::PRECONDITION, kj::Exception::Durability::PERMANENT,
       file, line,
+#else
+  kj::Exception exception(kj::Exception::Type::FAILED, file, line,
+#endif
       kj::str(func, "(): Type error in parameter '", name, "'; expected type: ", typeName(type)));
   v8::ThrowException(toJsException(kj::mv(exception)));
   return emptyHandle;
@@ -778,12 +819,8 @@ public:
     KJ_IF_MAYBE(result, tryUnwrap<T>(hdl)) {
       return *result;
     } else {
-      kj::Exception exception(
-            kj::Exception::Nature::PRECONDITION, kj::Exception::Durability::PERMANENT,
-            __FILE__, __LINE__,
-            kj::str("Type error (in Cap'n Proto glue).  Expected: ", typeid(T).name()));
-      v8::ThrowException(v8::Exception::TypeError(
-          v8::String::New(kj::str(exception).cStr())));
+      auto message = kj::str("Type error (in Cap'n Proto glue).  Expected: ", typeid(T).name());
+      v8::ThrowException(v8::Exception::TypeError(v8::String::New(message.cStr())));
       return nullptr;
     }
   }
@@ -935,10 +972,6 @@ void enumerateMethods(capnp::InterfaceSchema schema, v8::Handle<v8::Object> meth
       enumerateMethods(schema.getDependency(superId).asInterface(), methodMap, context, seen);
     }
 #else
-    // IF YOU GET A COMPILER ERROR HERE it may be because you are using a version of Cap'n Proto
-    // pulled directly from git which you haven't updated recently. Please make sure your
-    // Cap'n Proto sources are newer than Oct 27, 2014 or use a release version of Cap'n Proto
-    // instead.
     for (auto superclass: schema.getSuperclasses()) {
       enumerateMethods(superclass, methodMap, context, seen);
     }
@@ -1694,10 +1727,6 @@ public:
     auto hostId = builder.initRoot<capnp::rpc::twoparty::SturdyRefHostId>();
     hostId.setSide(capnp::rpc::twoparty::Side::SERVER);
 
-    // IF YOU GET A COMPILER ERROR HERE it may be because you are using a version of Cap'n Proto
-    // pulled directly from git which you haven't updated recently. Please make sure your
-    // Cap'n Proto sources are newer than Nov 4, 2014 or use a release version of Cap'n Proto
-    // instead.
     return rpcSystem.bootstrap(hostId);
 #endif
   }
@@ -2045,10 +2074,14 @@ v8::Handle<v8::Value> cancel(const v8::Arguments& args) {
   KJV8_UNWRAP(kj::Own<Canceler>, canceler, args[0]);
 
   return liftKj([&]() -> v8::Handle<v8::Value> {
+#if CAPNP_VERSION < 5000
     canceler->fulfiller->reject(kj::Exception(
         kj::Exception::Nature::OTHER,
         kj::Exception::Durability::PERMANENT,
         __FILE__, __LINE__, kj::heapString("Request canceled by caller.")));
+#else
+    canceler->fulfiller->reject(KJ_EXCEPTION(FAILED, "request canceled by caller"));
+#endif
     return v8::Undefined();
   });
 }
