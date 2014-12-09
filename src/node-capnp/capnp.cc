@@ -74,13 +74,34 @@ public:
   kj::EventLoop& getKjLoop() { return kjLoop; }
   uv_loop_t* getUvLoop() { return loop; }
 
+#if CAPNP_VERSION < 5000
   void wait() override {
-    // TODO(someday):  Detect if loop will never have an event.
+#else
+  bool wait() override {
+    // IF YOU GET A COMPILER ERROR HERE it may be because you are using a version of Cap'n Proto
+    // pulled directly from git which you haven't updated recently. Please make sure your
+    // Cap'n Proto sources are newer than Dec 9, 2014 or use a release version of Cap'n Proto
+    // instead.
+#endif
     UV_CALL(uv_run(loop, UV_RUN_ONCE), loop);
+
+#if CAPNP_VERSION >= 5000
+    // TODO(someday): Implement cross-thread wakeup.
+    return false;
+#endif
   }
 
+#if CAPNP_VERSION < 5000
   void poll() override {
+#else
+  bool poll() override {
+#endif
     UV_CALL(uv_run(loop, UV_RUN_NOWAIT), loop);
+
+#if CAPNP_VERSION >= 5000
+    // TODO(someday): Implement cross-thread wakeup.
+    return false;
+#endif
   }
 
   void setRunnable(bool runnable) override {
@@ -671,10 +692,6 @@ v8::Local<v8::Value> toJsException(kj::Exception&& exception) {
     obj->Set(v8::String::NewSymbol("durability"), v8::String::NewSymbol(durability));
 #else
     const char* type = "unknown";
-    // IF YOU GET A COMPILER ERROR HERE it may be because you are using a version of Cap'n Proto
-    // pulled directly from git which you haven't updated recently. Please make sure your
-    // Cap'n Proto sources are newer than Nov 29, 2014 or use a release version of Cap'n Proto
-    // instead.
     switch (exception.getType()) {
       case kj::Exception::Type::FAILED        : type = "failed"       ; break;
       case kj::Exception::Type::OVERLOADED    : type = "overloaded"   ; break;
