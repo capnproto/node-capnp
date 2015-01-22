@@ -25,7 +25,14 @@ var assert = require("assert");
 var Promise = require("es6-promise").Promise;
 var spawn = require("child_process").spawn;
 
-var goldenBinary = fs.readFileSync("src/node-capnp/testdata/binary");
+var goldenBinary;
+try {
+  // Works in Ekam build.
+  goldenBinary = fs.readFileSync("node-capnp/testdata/binary");
+} catch (ex) {
+  // Works in npm build.
+  goldenBinary = fs.readFileSync("src/node-capnp/testdata/binary");
+}
 
 var test = require("./test.capnp");
 assert(test === capnp.import(__dirname + "/test.capnp"));

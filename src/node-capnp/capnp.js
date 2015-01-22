@@ -28,11 +28,20 @@ var modPath = path.join(
     __dirname, "../../bin", process.platform+ "-" + process.arch + "-" + v8,
     "capnp");
 try {
-  fs.statSync(modPath+ ".node");
+  fs.statSync(modPath + ".node");
 } catch (ex) {
   // No binary!
-  throw new Error(
-      "`" + modPath+ ".node` is missing. Try reinstalling `node-capnp`?");
+
+  // Also try just "capnp.node". (Mainly for use when building with Ekam rather
+  // than npm.)
+  modPath = "./capnp.node";
+  try {
+    fs.statSync(path.join(__dirname, "capnp.node"));
+  } catch (ex) {
+    // Give up.
+    throw new Error(
+        "`" + modPath+ ".node` is missing. Try reinstalling `node-capnp`?");
+  }
 }
 
 var v8capnp = require(modPath);
