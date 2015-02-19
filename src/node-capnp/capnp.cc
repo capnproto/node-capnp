@@ -1582,8 +1582,11 @@ v8::Handle<v8::Value> valueToJs(CapnpContext& context, capnp::DynamicValue::Read
       return scope.Close(result);
     }
     case capnp::DynamicValue::ANY_POINTER:
-      // TODO(soon):  How do we represent AnyPointer?
-      return v8::Undefined();
+      return liftKj([&]() -> v8::Handle<v8::Value> {
+        capnp::MallocMessageBuilder message;
+        message.setRoot(value.as<capnp::AnyPointer>());
+        return wrapBuffer(capnp::messageToFlatArray(message));
+      });
   }
 
   KJ_FAIL_ASSERT("Unimplemented DynamicValue type.");
