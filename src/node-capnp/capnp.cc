@@ -927,8 +927,13 @@ v8::Handle<v8::Value> setNative(const v8::Arguments& args) {
 v8::Local<v8::Object> schemaToObject(capnp::ParsedSchema schema, CapnpContext& context,
                                      v8::Handle<v8::Value> wrappedContext) {
   auto result = context.wrapper.wrap(new capnp::Schema(schema));
+  auto proto = schema.getProto();
 
-  for (auto nested: schema.getProto().getNestedNodes()) {
+  result->Set(v8::String::NewSymbol("typeId"),
+              // 64-bit values must be stringified to avoid losing precision.
+              v8::String::New(kj::str(proto.getId()).cStr()));
+
+  for (auto nested: proto.getNestedNodes()) {
     kj::StringPtr name = nested.getName();
     result->Set(v8::String::NewSymbol(name.cStr()),
                 schemaToObject(schema.getNested(name), context, wrappedContext));
@@ -1582,8 +1587,11 @@ v8::Handle<v8::Value> valueToJs(CapnpContext& context, capnp::DynamicValue::Read
       return scope.Close(result);
     }
     case capnp::DynamicValue::ANY_POINTER:
-      // TODO(soon):  How do we represent AnyPointer?
-      return v8::Undefined();
+      return liftKj([&]() -> v8::Handle<v8::Value> {
+        capnp::MallocMessageBuilder message;
+        message.setRoot(value.as<capnp::AnyPointer>());
+        return wrapBuffer(capnp::messageToFlatArray(message));
+      });
   }
 
   KJ_FAIL_ASSERT("Unimplemented DynamicValue type.");
