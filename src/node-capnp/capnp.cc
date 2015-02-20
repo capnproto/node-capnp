@@ -929,7 +929,7 @@ v8::Local<v8::Object> schemaToObject(capnp::ParsedSchema schema, CapnpContext& c
   auto result = context.wrapper.wrap(new capnp::Schema(schema));
   auto proto = schema.getProto();
 
-  result->Set(v8::String::NewSymbol("_id"),
+  result->Set(v8::String::NewSymbol("typeId"),
               // 64-bit values must be stringified to avoid losing precision.
               v8::String::New(kj::str(proto.getId()).cStr()));
 
