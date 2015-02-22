@@ -22,9 +22,10 @@ messages from complete Javascript objects.  This actually makes the library
 somewhat nicer syntactically than it would be otherwise, but it is not fast.
 
 A pure-Javascript implementation would likely be much faster.  See
-[capnproto-js](https://github.com/jscheid/capnproto-js) for a nascent such
+[capnp-js](https://github.com/capnp-js/serialization) for such an
 implementation.  Unfortunately, that implementation is incomplete and does not
-support RPC at all.  Hence, this hack was created for short-term use.
+support [RPC](https://github.com/capnp-js/rpc) just yet.  Hence, this hack was 
+created for short-term use.
 
 Eventually, we expect to replace this implementation with a pure-Javascript
 implementation, or perhaps a hybrid that at least has inlinable accessors and
