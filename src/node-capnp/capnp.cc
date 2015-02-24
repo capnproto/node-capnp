@@ -1661,7 +1661,7 @@ v8::Handle<v8::Value> toJsParams(const v8::Arguments& args) {
       auto result = v8::Array::New(fields.size());
       for (uint i: kj::indices(fields)) {
         result->Set(i, valueToJs(context, reader.get(fields[i]),
-                    capnp::schema::Type::STRUCT, args[1]));
+                    fields[i].getType().which(), args[1]));
       }
       return result;
     } else {
