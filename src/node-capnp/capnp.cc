@@ -1724,10 +1724,11 @@ class RpcConnection: public kj::Refcounted {
   // A two-party RPC connection.
 
 public:
-  RpcConnection(kj::Own<kj::AsyncIoStream>&& streamParam)
+  RpcConnection(kj::Own<kj::AsyncIoStream>&& streamParam,
+                kj::Maybe<capnp::Capability::Client> bootstrap)
       : stream(kj::mv(streamParam)),
         network(*stream, capnp::rpc::twoparty::Side::CLIENT),
-        rpcSystem(capnp::makeRpcClient(network)) {}
+        rpcSystem(network, bootstrap) {}
 
   capnp::Capability::Client import(kj::StringPtr ref) {
     capnp::MallocMessageBuilder builder;
@@ -1775,20 +1776,26 @@ struct ConnenctionWrapper {
 };
 
 v8::Handle<v8::Value> connect(const v8::Arguments& args) {
-  // connect(addr) -> connection
+  // connect(addr, bootstrap) -> connection
   //
-  // Connect to the given address using the two-party protocol.
+  // Connect to the given address using the two-party protocol, exporting a bootstrap capability if
+  // given one.
 
   KJV8_UNWRAP(CapnpContext, context, args.Data());
   KJV8_STACK_STR(address, args[0], 64);
 
   return liftKj([&]() -> v8::Handle<v8::Value> {
+    kj::Maybe<capnp::Capability::Client> bootstrap =
+        Wrapper::tryUnwrap<capnp::DynamicCapability::Client>(args[1]);
+
     auto promise = context.aiop->getNetwork().parseAddress(address)
         .then([](kj::Own<kj::NetworkAddress>&& addr) {
       return addr->connect();
-    }).then([](kj::Own<kj::AsyncIoStream>&& stream) {
-      return kj::refcounted<RpcConnection>(kj::mv(stream));
-    });
+    }).then(kj::mvCapture(bootstrap,
+        [](kj::Maybe<capnp::Capability::Client>&& bootstrap,
+           kj::Own<kj::AsyncIoStream>&& stream) {
+      return kj::refcounted<RpcConnection>(kj::mv(stream), bootstrap);
+    }));
 
     return context.wrapper.wrapCopy(ConnenctionWrapper { promise.fork() });
   });

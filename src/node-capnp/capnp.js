@@ -247,8 +247,11 @@ function Connection(native) {
   }
 }
 
-exports.connect = function (addr) {
-  return new Connection(v8capnp.connect(addr));
+exports.connect = function (addr, bootstrapCap) {
+  if (bootstrapCap && !v8capnp.isCap(bootstrapCap)) {
+    throw new Error("Invalid bootstrap capability.");
+  }
+  return new Connection(v8capnp.connect(addr, bootstrapCap));
 }
 
 exports.parse = function (schema, buffer) {
