@@ -196,6 +196,12 @@ then use that:
 In this case, the library only wraps `myFoo` as a capability once, and then
 calls `close()` once all copies of that reference have been dropped.
 
+### Exporting a bootstrap capability
+
+    // Connect to another server and export `myFoo` as a bootstrap capability.
+    var newConn = capnp.connect("localhost:4321",
+                                new capnp.Capability(myFoo, mySchema.Foo));
+
 ### Accepting RPC connections
 
 Not implemented.  Currently you can only be a client, not a server.  (But you
