@@ -1447,7 +1447,7 @@ v8::Handle<v8::Value> fromJs(const v8::Arguments& args) {
   // If `jso` is an array, it will be treated as an argument list ordered by ordinal.
   //
   // `LocalCap` is a constructor that takes a JS object as a parameter and produces a new object
-  // that would be appropritae to pass to `newCap`.  Normally this means wrapping each method to
+  // that would be appropriate to pass to `newCap`.  Normally this means wrapping each method to
   // take an RPC request as its input.
 
   KJV8_UNWRAP(CapnpContext, context, args.Data());
@@ -1770,7 +1770,7 @@ private:
   capnp::RpcSystem<capnp::rpc::twoparty::SturdyRefHostId> rpcSystem;
 };
 
-struct ConnenctionWrapper {
+struct ConnectionWrapper {
   kj::ForkedPromise<kj::Own<RpcConnection>> promise;
 };
 
@@ -1790,7 +1790,7 @@ v8::Handle<v8::Value> connect(const v8::Arguments& args) {
       return kj::refcounted<RpcConnection>(kj::mv(stream));
     });
 
-    return context.wrapper.wrapCopy(ConnenctionWrapper { promise.fork() });
+    return context.wrapper.wrapCopy(ConnectionWrapper { promise.fork() });
   });
 }
 
@@ -1799,7 +1799,7 @@ v8::Handle<v8::Value> disconnect(const v8::Arguments& args) {
   //
   // Shuts down the connection.
 
-  KJV8_UNWRAP(ConnenctionWrapper, connectionWrapper, args[0]);
+  KJV8_UNWRAP(ConnectionWrapper, connectionWrapper, args[0]);
 
   return liftKj([&]() -> v8::Handle<v8::Value> {
     connectionWrapper.promise.addBranch().then([](kj::Own<RpcConnection>&& connection) {
@@ -1818,7 +1818,7 @@ v8::Handle<v8::Value> restore(const v8::Arguments& args) {
   // reader, or builder.
 
   KJV8_UNWRAP(CapnpContext, context, args.Data());
-  KJV8_UNWRAP(ConnenctionWrapper, connectionWrapper, args[0]);
+  KJV8_UNWRAP(ConnectionWrapper, connectionWrapper, args[0]);
   bool isNullRef = args[1]->IsNull();
   auto ref = toKjString(args[1]);  // TODO(soon):  Allow struct reader.
   KJV8_UNWRAP(capnp::Schema, schema, args[2]);
