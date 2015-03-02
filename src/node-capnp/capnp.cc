@@ -1791,7 +1791,7 @@ v8::Handle<v8::Value> connect(const v8::Arguments& args) {
     auto promise = context.aiop->getNetwork().parseAddress(address)
         .then([](kj::Own<kj::NetworkAddress>&& addr) {
       return addr->connect();
-    }).then(kj::mvCapture(bootstrap,
+    }).then(kj::mvCapture(kj::mv(bootstrap),
         [](kj::Maybe<capnp::Capability::Client>&& bootstrap,
            kj::Own<kj::AsyncIoStream>&& stream) {
       return kj::refcounted<RpcConnection>(kj::mv(stream), bootstrap);
