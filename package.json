@@ -28,5 +28,8 @@
     "type": "git",
     "url": "git://github.com/kentonv/node-capnp.git"
   },
+  "engines": {
+    "node": "0.10.x"
+  },
   "license": "MIT"
 }
