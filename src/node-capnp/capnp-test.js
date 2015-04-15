@@ -49,6 +49,11 @@ var canon = capnp.bytesToPreorder(test.TestAllTypes, roundTripped);
 assert.equal(goldenBinary.length, roundTripped.length, "Round trip changed size?");
 assert.equal(goldenBinary.toString("base64"), canon.toString("base64"), "Round trip lost data?");
 
+assert.equal(3456789012, test.TestConstants.uint32Const);
+assert.equal("foo", test.TestConstants.textConst);
+assert.equal("baz", test.TestConstants.structConst.textField);
+assert.equal("xyzzy", test.TestConstants.textListConst[1]);
+
 // =======================================================================================
 
 /*

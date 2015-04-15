@@ -896,7 +896,7 @@ struct CapnpContext {
   capnp::SchemaParser parser;
   Wrapper wrapper;
 
-  std::unordered_map<uint64_t, OwnHandle<v8::Object>> importedFiles;
+  std::unordered_map<uint64_t, OwnHandle<v8::Value>> importedFiles;
   // Maps file IDs -> schema tree for that file.
 
   std::unordered_map<uint64_t, OwnHandle<v8::Object>> methodSets;
@@ -924,22 +924,31 @@ v8::Handle<v8::Value> setNative(const v8::Arguments& args) {
   return emptyHandle;
 }
 
-v8::Local<v8::Object> schemaToObject(capnp::ParsedSchema schema, CapnpContext& context,
+v8::Handle<v8::Value> valueToJs(CapnpContext& context, capnp::DynamicValue::Reader value,
+                                capnp::schema::Type::Which whichType,
+                                v8::Handle<v8::Value> capConstructor);
+
+v8::Handle<v8::Value> schemaToObject(capnp::ParsedSchema schema, CapnpContext& context,
                                      v8::Handle<v8::Value> wrappedContext) {
-  auto result = context.wrapper.wrap(new capnp::Schema(schema));
   auto proto = schema.getProto();
+  if (proto.isConst()) {
+    auto c = schema.asConst();
+    return valueToJs(context, c, c.getType().which(), v8::Undefined());
+  } else {
+    auto result = context.wrapper.wrap(new capnp::Schema(schema));
 
-  result->Set(v8::String::NewSymbol("typeId"),
-              // 64-bit values must be stringified to avoid losing precision.
-              v8::String::New(kj::str(proto.getId()).cStr()));
+    result->Set(v8::String::NewSymbol("typeId"),
+                // 64-bit values must be stringified to avoid losing precision.
+                v8::String::New(kj::str(proto.getId()).cStr()));
 
-  for (auto nested: proto.getNestedNodes()) {
-    kj::StringPtr name = nested.getName();
-    result->Set(v8::String::NewSymbol(name.cStr()),
-                schemaToObject(schema.getNested(name), context, wrappedContext));
+    for (auto nested: proto.getNestedNodes()) {
+      kj::StringPtr name = nested.getName();
+      result->Set(v8::String::NewSymbol(name.cStr()),
+                  schemaToObject(schema.getNested(name), context, wrappedContext));
+    }
+
+    return result;
   }
-
-  return result;
 }
 
 v8::Handle<v8::Value> import(const v8::Arguments& args) {
