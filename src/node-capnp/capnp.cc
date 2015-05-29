@@ -74,34 +74,18 @@ public:
   kj::EventLoop& getKjLoop() { return kjLoop; }
   uv_loop_t* getUvLoop() { return loop; }
 
-#if CAPNP_VERSION < 5000
-  void wait() override {
-#else
   bool wait() override {
-    // IF YOU GET A COMPILER ERROR HERE it may be because you are using a version of Cap'n Proto
-    // pulled directly from git which you haven't updated recently. Please make sure your
-    // Cap'n Proto sources are newer than Dec 9, 2014 or use a release version of Cap'n Proto
-    // instead.
-#endif
     UV_CALL(uv_run(loop, UV_RUN_ONCE), loop);
 
-#if CAPNP_VERSION >= 5000
     // TODO(someday): Implement cross-thread wakeup.
     return false;
-#endif
   }
 
-#if CAPNP_VERSION < 5000
-  void poll() override {
-#else
   bool poll() override {
-#endif
     UV_CALL(uv_run(loop, UV_RUN_NOWAIT), loop);
 
-#if CAPNP_VERSION >= 5000
     // TODO(someday): Implement cross-thread wakeup.
     return false;
-#endif
   }
 
   void setRunnable(bool runnable) override {
@@ -672,25 +656,6 @@ v8::Local<v8::Value> toJsException(kj::Exception&& exception) {
     obj->Set(v8::String::NewSymbol("cppFile"), v8::String::New(exception.getFile()));
     obj->Set(v8::String::NewSymbol("line"), v8::Int32::New(exception.getLine()));
 
-#if CAPNP_VERSION < 5000
-    const char* nature = "unknown";
-    switch (exception.getNature()) {
-      case kj::Exception::Nature::PRECONDITION   : nature = "precondition"  ; break;
-      case kj::Exception::Nature::LOCAL_BUG      : nature = "localBug"      ; break;
-      case kj::Exception::Nature::OS_ERROR       : nature = "osError"       ; break;
-      case kj::Exception::Nature::NETWORK_FAILURE: nature = "networkFailure"; break;
-      case kj::Exception::Nature::OTHER          : nature = "other"         ; break;
-    }
-    obj->Set(v8::String::NewSymbol("nature"), v8::String::NewSymbol(nature));
-
-    const char* durability = "unknown";
-    switch (exception.getDurability()) {
-      case kj::Exception::Durability::PERMANENT : durability = "permanent" ; break;
-      case kj::Exception::Durability::TEMPORARY : durability = "temporary" ; break;
-      case kj::Exception::Durability::OVERLOADED: durability = "overloaded"; break;
-    }
-    obj->Set(v8::String::NewSymbol("durability"), v8::String::NewSymbol(durability));
-#else
     const char* type = "unknown";
     switch (exception.getType()) {
       case kj::Exception::Type::FAILED        : type = "failed"       ; break;
@@ -699,7 +664,6 @@ v8::Local<v8::Value> toJsException(kj::Exception&& exception) {
       case kj::Exception::Type::UNIMPLEMENTED : type = "unimplemented"; break;
     }
     obj->Set(v8::String::NewSymbol("type"), v8::String::NewSymbol(type));
-#endif
   } else {
     KJ_LOG(WARNING, "v8 exception is not an object?");
   }
@@ -708,14 +672,6 @@ v8::Local<v8::Value> toJsException(kj::Exception&& exception) {
 }
 
 kj::Exception fromJsException(v8::Handle<v8::Value> exception) {
-#if CAPNP_VERSION < 5000
-  // TODO(soon):  Check for "nature", "durability", etc. fields and use them to construct the
-  // exception.
-  return kj::Exception(
-        kj::Exception::Nature::OTHER,
-        kj::Exception::Durability::PERMANENT,
-        __FILE__, __LINE__, toKjString(exception));
-#else
   kj::Exception::Type type = kj::Exception::Type::FAILED;
 
   if (exception->IsObject()) {
@@ -735,18 +691,11 @@ kj::Exception fromJsException(v8::Handle<v8::Value> exception) {
   }
 
   return kj::Exception(type, "(javascript)", 0, toKjString(exception));
-#endif
 }
 
 EmptyHandle throwTypeError(kj::StringPtr name, const std::type_info& type,
                            const char* func, const char* file, int line) {
-#if CAPNP_VERSION < 5000
-  kj::Exception exception(
-      kj::Exception::Nature::PRECONDITION, kj::Exception::Durability::PERMANENT,
-      file, line,
-#else
   kj::Exception exception(kj::Exception::Type::FAILED, file, line,
-#endif
       kj::str(func, "(): Type error in parameter '", name, "'; expected type: ", typeName(type)));
   v8::ThrowException(toJsException(kj::mv(exception)));
   return emptyHandle;
@@ -997,15 +946,9 @@ void enumerateMethods(capnp::InterfaceSchema schema, v8::Handle<v8::Object> meth
                       CapnpContext& context, std::set<uint64_t>& seen) {
   auto proto = schema.getProto();
   if (seen.insert(proto.getId()).second) {
-#if CAPNP_VERSION < 5000
-    for (uint64_t superId: proto.getInterface().getExtends()) {
-      enumerateMethods(schema.getDependency(superId).asInterface(), methodMap, context, seen);
-    }
-#else
     for (auto superclass: schema.getSuperclasses()) {
       enumerateMethods(superclass, methodMap, context, seen);
     }
-#endif
 
     auto methods = schema.getMethods();
     for (auto method: methods) {
@@ -1225,15 +1168,9 @@ struct FromJsConverter {
     }
   }
 
-#if CAPNP_VERSION < 5000
-  capnp::Orphan<capnp::DynamicValue> orphanFromJs(
-      capnp::StructSchema::Field field, capnp::Orphanage orphanage,
-      capnp::schema::Type::Reader type, v8::Handle<v8::Value> js) {
-#else
   capnp::Orphan<capnp::DynamicValue> orphanFromJs(
       capnp::StructSchema::Field field, capnp::Orphanage orphanage,
       capnp::Type type, v8::Handle<v8::Value> js) {
-#endif
     switch (type.which()) {
       case capnp::schema::Type::VOID:
         // Accept any false-y value.
@@ -1267,13 +1204,8 @@ struct FromJsConverter {
       case capnp::schema::Type::LIST: {
         if (js->IsArray()) {
           v8::Array* jsArray = v8::Array::Cast(*js);
-#if CAPNP_VERSION < 5000
-          auto elementType = type.getList().getElementType();
-          auto schema = capnp::ListSchema::of(elementType, field.getContainingStruct());
-#else
           auto schema = type.asList();
           auto elementType = schema.getElementType();
-#endif
           auto orphan = orphanage.newOrphan(schema, jsArray->Length());
           auto builder = orphan.get();
           if (elementType.isStruct()) {
@@ -1308,11 +1240,7 @@ struct FromJsConverter {
       case capnp::schema::Type::ENUM: {
         v8::HandleScope scope;  // for string conversion
         KJV8_STACK_STR(name, js, 32);
-#if CAPNP_VERSION < 5000
-        auto schema = field.getContainingStruct().getDependency(type.getEnum().getTypeId()).asEnum();
-#else
         auto schema = type.asEnum();
-#endif
         KJ_IF_MAYBE(enumerant, schema.findEnumerantByName(name)) {
           return capnp::DynamicEnum(*enumerant);
         } else if (js->IsUint32()) {
@@ -1324,12 +1252,7 @@ struct FromJsConverter {
         KJ_IF_MAYBE(reader, unwrapReader(js)) {
           return orphanage.newOrphanCopy(*reader);
         } else if (js->IsObject()) {
-#if CAPNP_VERSION < 5000
-          auto schema = field.getContainingStruct().getDependency(
-              type.getStruct().getTypeId()).asStruct();
-#else
           auto schema = type.asStruct();
-#endif
           auto orphan = orphanage.newOrphan(schema);
           if (!structFromJs(orphan.get(), v8::Object::Cast(*js))) {
             return nullptr;
@@ -1339,12 +1262,7 @@ struct FromJsConverter {
         break;
       }
       case capnp::schema::Type::INTERFACE: {
-#if CAPNP_VERSION < 5000
-        auto schema = field.getContainingStruct().getDependency(
-            type.getInterface().getTypeId()).asInterface();
-#else
         auto schema = type.asInterface();
-#endif
         if (js->IsNull()) {
           auto cap = capnp::Capability::Client(nullptr)
               .castAs<capnp::DynamicCapability>(schema);
@@ -1396,13 +1314,8 @@ struct FromJsConverter {
     auto proto = field.getProto();
     switch (proto.which()) {
       case capnp::schema::Field::SLOT: {
-#if CAPNP_VERSION < 5000
-        capnp::Orphan<capnp::DynamicValue> value = orphanFromJs(field,
-            capnp::Orphanage::getForMessageContaining(builder), proto.getSlot().getType(), js);
-#else
         capnp::Orphan<capnp::DynamicValue> value = orphanFromJs(field,
             capnp::Orphanage::getForMessageContaining(builder), field.getType(), js);
-#endif
         if (value.getType() == capnp::DynamicValue::UNKNOWN) {
           return false;
         }
@@ -1747,19 +1660,11 @@ public:
   }
 
   capnp::Capability::Client importDefault() {
-#if CAPNP_VERSION < 5000
-    capnp::MallocMessageBuilder builder;
-    auto root = builder.getRoot<capnp::rpc::SturdyRef>();
-    auto hostId = root.getHostId().initAs<capnp::rpc::twoparty::SturdyRefHostId>();
-    hostId.setSide(capnp::rpc::twoparty::Side::SERVER);
-    return rpcSystem.restore(hostId, root.getObjectId());
-#else
     capnp::MallocMessageBuilder builder;
     auto hostId = builder.initRoot<capnp::rpc::twoparty::SturdyRefHostId>();
     hostId.setSide(capnp::rpc::twoparty::Side::SERVER);
 
     return rpcSystem.bootstrap(hostId);
-#endif
   }
 
   kj::Own<RpcConnection> addRef() {
@@ -2111,14 +2016,7 @@ v8::Handle<v8::Value> cancel(const v8::Arguments& args) {
   KJV8_UNWRAP(kj::Own<Canceler>, canceler, args[0]);
 
   return liftKj([&]() -> v8::Handle<v8::Value> {
-#if CAPNP_VERSION < 5000
-    canceler->fulfiller->reject(kj::Exception(
-        kj::Exception::Nature::OTHER,
-        kj::Exception::Durability::PERMANENT,
-        __FILE__, __LINE__, kj::heapString("Request canceled by caller.")));
-#else
     canceler->fulfiller->reject(KJ_EXCEPTION(FAILED, "request canceled by caller"));
-#endif
     return v8::Undefined();
   });
 }
