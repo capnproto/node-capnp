@@ -925,15 +925,14 @@ v8::Handle<v8::Value> setNative(const v8::Arguments& args) {
 }
 
 v8::Handle<v8::Value> valueToJs(CapnpContext& context, capnp::DynamicValue::Reader value,
-                                capnp::schema::Type::Which whichType,
-                                v8::Handle<v8::Value> capConstructor);
+                                capnp::Type type, v8::Handle<v8::Value> capConstructor);
 
 v8::Handle<v8::Value> schemaToObject(capnp::ParsedSchema schema, CapnpContext& context,
                                      v8::Handle<v8::Value> wrappedContext) {
   auto proto = schema.getProto();
   if (proto.isConst()) {
     auto c = schema.asConst();
-    return valueToJs(context, c, c.getType().which(), v8::Undefined());
+    return valueToJs(context, c, c.getType(), v8::Undefined());
   } else {
     auto result = context.wrapper.wrap(new capnp::Schema(schema));
 
@@ -1504,8 +1503,7 @@ bool fieldToJs(CapnpContext& context, v8::Handle<v8::Object> object,
                v8::Handle<v8::Value> capConstructor);
 
 v8::Handle<v8::Value> valueToJs(CapnpContext& context, capnp::DynamicValue::Reader value,
-                                capnp::schema::Type::Which whichType,
-                                v8::Handle<v8::Value> capConstructor) {
+                                capnp::Type type, v8::Handle<v8::Value> capConstructor) {
   switch (value.getType()) {
     case capnp::DynamicValue::UNKNOWN:
       return v8::Undefined();
@@ -1514,8 +1512,8 @@ v8::Handle<v8::Value> valueToJs(CapnpContext& context, capnp::DynamicValue::Read
     case capnp::DynamicValue::BOOL:
       return v8::Boolean::New(value.as<bool>());
     case capnp::DynamicValue::INT: {
-      if (whichType == capnp::schema::Type::INT64 ||
-          whichType == capnp::schema::Type::UINT64) {
+      if (type.which() == capnp::schema::Type::INT64 ||
+          type.which() == capnp::schema::Type::UINT64) {
         // 64-bit values must be stringified to avoid losing precision.
         return v8::String::New(kj::str(value.as<int64_t>()).cStr());
       } else {
@@ -1523,8 +1521,8 @@ v8::Handle<v8::Value> valueToJs(CapnpContext& context, capnp::DynamicValue::Read
       }
     }
     case capnp::DynamicValue::UINT: {
-      if (whichType == capnp::schema::Type::INT64 ||
-          whichType == capnp::schema::Type::UINT64) {
+      if (type.which() == capnp::schema::Type::INT64 ||
+          type.which() == capnp::schema::Type::UINT64) {
         // 64-bit values must be stringified to avoid losing precision.
         return v8::String::New(kj::str(value.as<uint64_t>()).cStr());
       } else {
@@ -1545,7 +1543,7 @@ v8::Handle<v8::Value> valueToJs(CapnpContext& context, capnp::DynamicValue::Read
     case capnp::DynamicValue::LIST: {
       v8::HandleScope scope;
       capnp::DynamicList::Reader list = value.as<capnp::DynamicList>();
-      auto elementType = list.getSchema().whichElementType();
+      auto elementType = list.getSchema().getElementType();
       auto array = v8::Array::New(list.size());
       for (uint i: kj::indices(list)) {
         auto subValue = valueToJs(context, list[i], elementType, capConstructor);
@@ -1616,14 +1614,10 @@ bool fieldToJs(CapnpContext& context, v8::Handle<v8::Object> object,
   v8::Handle<v8::Value> fieldValue;
   switch (proto.which()) {
     case capnp::schema::Field::SLOT:
-      fieldValue = valueToJs(context, reader.get(field), proto.getSlot().getType().which(),
-                             capConstructor);
+      fieldValue = valueToJs(context, reader.get(field), field.getType(), capConstructor);
       goto setField;
     case capnp::schema::Field::GROUP:
-      // Hack:  We don't have a schema::Type instance to use here, but it turns out valueToJs()
-      //   doesn't need one when receiving a struct value.  So, uh...  provide a fake one.  :/
-      fieldValue = valueToJs(context, reader.get(field), capnp::schema::Type::STRUCT,
-                             capConstructor);
+      fieldValue = valueToJs(context, reader.get(field), field.getType(), capConstructor);
       goto setField;
   }
 
@@ -1649,7 +1643,7 @@ v8::Handle<v8::Value> toJs(const v8::Arguments& args) {
   KJV8_UNWRAP_READER(reader, args[0]);
 
   return liftKj([&]() -> v8::Handle<v8::Value> {
-    return valueToJs(context, reader, capnp::schema::Type::STRUCT, args[1]);
+    return valueToJs(context, reader, reader.getSchema(), args[1]);
   });
 }
 
@@ -1672,13 +1666,12 @@ v8::Handle<v8::Value> toJsParams(const v8::Arguments& args) {
       auto fields = schema.getFields();
       auto result = v8::Array::New(fields.size());
       for (uint i: kj::indices(fields)) {
-        result->Set(i, valueToJs(context, reader.get(fields[i]),
-                    fields[i].getType().which(), args[1]));
+        result->Set(i, valueToJs(context, reader.get(fields[i]), fields[i].getType(), args[1]));
       }
       return result;
     } else {
       auto result = v8::Array::New(1);
-      result->Set(1, valueToJs(context, reader, capnp::schema::Type::STRUCT, args[1]));
+      result->Set(1, valueToJs(context, reader, reader.getSchema(), args[1]));
       return result;
     }
   });
