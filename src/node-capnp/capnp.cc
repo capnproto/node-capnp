@@ -1509,12 +1509,29 @@ v8::Handle<v8::Value> valueToJs(CapnpContext& context, capnp::DynamicValue::Read
       }
       return scope.Close(result);
     }
-    case capnp::DynamicValue::ANY_POINTER:
-      return liftKj([&]() -> v8::Handle<v8::Value> {
-        capnp::MallocMessageBuilder message;
-        message.setRoot(value.as<capnp::AnyPointer>());
-        return wrapBuffer(capnp::messageToFlatArray(message));
-      });
+    case capnp::DynamicValue::ANY_POINTER: {
+      if (type.whichAnyPointerKind() == capnp::schema::Type::AnyPointer::Unconstrained::CAPABILITY) {
+        v8::HandleScope scope;
+        auto cap = value.as<capnp::AnyPointer>().getAs<capnp::Capability>();
+        capnp::DynamicCapability::Client dynamicCap(kj::mv(cap));
+        v8::Handle<v8::Value> result = context.wrapper.wrapCopy(kj::mv(dynamicCap));
+        if (capConstructor->IsFunction()) {
+          v8::Function* func = v8::Function::Cast(*capConstructor);
+          v8::Handle<v8::Value> args[1] = { result };
+          result = func->NewInstance(kj::size(args), args);
+          if (result.IsEmpty()) {
+            return emptyHandle;
+          }
+        }
+        return scope.Close(result);
+      } else {
+        return liftKj([&]() -> v8::Handle<v8::Value> {
+          capnp::MallocMessageBuilder message;
+          message.setRoot(value.as<capnp::AnyPointer>());
+          return wrapBuffer(capnp::messageToFlatArray(message));
+        });
+      }
+    }
   }
 
   KJ_FAIL_ASSERT("Unimplemented DynamicValue type.");
