@@ -220,10 +220,12 @@ function Capability(native, schema) {
 
   v8capnp.setNative(this, native);
 
-  var methods = v8capnp.methods(schema);
+  if (schema) {
+    var methods = v8capnp.methods(schema);
 
-  for (var name in methods) {
-    this[name] = makeMethod(native, methods[name]);
+    for (var name in methods) {
+      this[name] = makeMethod(native, methods[name]);
+    }
   }
 
   this.close = function () { v8capnp.close(native); this.closed = true; }
