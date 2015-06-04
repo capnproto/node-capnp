@@ -663,7 +663,7 @@ v8::Local<v8::Value> toJsException(kj::Exception&& exception) {
       case kj::Exception::Type::DISCONNECTED  : type = "disconnected" ; break;
       case kj::Exception::Type::UNIMPLEMENTED : type = "unimplemented"; break;
     }
-    obj->Set(v8::String::NewSymbol("type"), v8::String::NewSymbol(type));
+    obj->Set(v8::String::NewSymbol("kjType"), v8::String::NewSymbol(type));
   } else {
     KJ_LOG(WARNING, "v8 exception is not an object?");
   }
