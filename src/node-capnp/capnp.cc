@@ -677,7 +677,7 @@ kj::Exception fromJsException(v8::Handle<v8::Value> exception) {
   if (exception->IsObject()) {
     v8::HandleScope scope;
     v8::Object* obj = v8::Object::Cast(*exception);
-    v8::Handle<v8::Value> value = obj->Get(v8::String::NewSymbol("type"));
+    v8::Handle<v8::Value> value = obj->Get(v8::String::NewSymbol("kjType"));
     if (!value.IsEmpty() && !value->IsUndefined()) {
       auto name = toKjString(value);
       if (name == "overloaded") {
