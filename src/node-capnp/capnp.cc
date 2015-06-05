@@ -1601,7 +1601,7 @@ v8::Handle<v8::Value> toJsParams(const v8::Arguments& args) {
       return result;
     } else {
       auto result = v8::Array::New(1);
-      result->Set(1, valueToJs(context, reader, reader.getSchema(), args[1]));
+      result->Set(0, valueToJs(context, reader, reader.getSchema(), args[1]));
       return result;
     }
   });
