@@ -148,9 +148,9 @@ function settleCaps(pipeline, final) {
 }
 
 function makeMethod(cap, method) {
-  return function () {
+  return function (params) {
     var req = v8capnp.request(cap, method);
-    v8capnp.fromJs(req, Array.prototype.slice.call(arguments, 0), LocalCapWrapper);
+    v8capnp.fromJs(req, params ? params : {}, LocalCapWrapper);
     var pipeline;
     var promise = new Promise(function (resolve, reject) {
       pipeline = v8capnp.send(req, resolve, reject, Capability);

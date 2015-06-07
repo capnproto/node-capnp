@@ -1368,8 +1368,6 @@ v8::Handle<v8::Value> fromJs(const v8::Arguments& args) {
   //
   // Copies the contents of a JS object into a struct builder.
   //
-  // If `jso` is an array, it will be treated as an argument list ordered by ordinal.
-  //
   // `LocalCap` is a constructor that takes a JS object as a parameter and produces a new object
   // that would be appropriate to pass to `newCap`.  Normally this means wrapping each method to
   // take an RPC request as its input.
@@ -1388,21 +1386,11 @@ v8::Handle<v8::Value> fromJs(const v8::Arguments& args) {
 
     FromJsConverter converter = { context, args.Data(), localCapType };
 
-    if (jsValue->IsArray()) {
-      v8::Array* array = v8::Array::Cast(*jsValue);
-      auto fields = schema.getFields();
-      uint length = kj::min(array->Length(), fields.size());
-
-      for (uint i = 0; i < length; i++) {
-        if (!converter.fieldFromJs(builder, fields[i], array->Get(i))) {
-          break;
-        }
-      }
-    } else if (jsValue->IsObject()) {
+    if (jsValue->IsObject()) {
       converter.structFromJs(builder, v8::Object::Cast(*jsValue));
     } else {
       v8::ThrowException(v8::Exception::TypeError(v8::String::New(
-          "fromJs() requires an array or an object.")));
+          "fromJs() requires an object.")));
     }
 
     return v8::Undefined();
