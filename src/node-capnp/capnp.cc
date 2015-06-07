@@ -1577,36 +1577,6 @@ v8::Handle<v8::Value> toJs(const v8::Arguments& args) {
   });
 }
 
-v8::Handle<v8::Value> toJsParams(const v8::Arguments& args) {
-  // toJsParams(reader, CapType) -> array
-  //
-  // Like toJs(), but interprets the input as a method parameter struct and produces a parameter
-  // array from it.
-
-  KJV8_UNWRAP(CapnpContext, context, args.Data());
-  KJV8_UNWRAP_READER(reader, args[0]);
-
-  return liftKj([&]() -> v8::Handle<v8::Value> {
-    auto schema = reader.getSchema();
-    if (schema.getProto().getScopeId() == 0) {
-      // This appears to be a parameter set.
-      // (TODO(cleanup):  Detecting this by scope ID seems ugly, but currently there's no other
-      // way.)
-
-      auto fields = schema.getFields();
-      auto result = v8::Array::New(fields.size());
-      for (uint i: kj::indices(fields)) {
-        result->Set(i, valueToJs(context, reader.get(fields[i]), fields[i].getType(), args[1]));
-      }
-      return result;
-    } else {
-      auto result = v8::Array::New(1);
-      result->Set(0, valueToJs(context, reader, reader.getSchema(), args[1]));
-      return result;
-    }
-  });
-}
-
 // -----------------------------------------------------------------------------
 
 v8::Handle<v8::Value> fromBytes(const v8::Arguments& args) {
@@ -2297,7 +2267,6 @@ void init(v8::Handle<v8::Object> exports) {
     mapFunction("structToString", structToString);
     mapFunction("fromJs", fromJs);
     mapFunction("toJs", toJs);
-    mapFunction("toJsParams", toJsParams);
     mapFunction("fromBytes", fromBytes);
     mapFunction("toBytes", toBytes);
     mapFunction("connect", connect);

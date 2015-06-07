@@ -150,8 +150,8 @@ You could write:
 
     // Implement the Foo interface.
     var myFoo = {
-      foo: function (a, b) {
-        return {c: "blah"};
+      foo: function (params) {
+        return {c: "Got params: ( " + params.a + ", " + params.b + ")"};
       }
     }
 
@@ -165,8 +165,8 @@ Instead, you may give your object a `close()` method, which will be called
 as soon as there are no more references.
 
     var myFoo = {
-      foo: function (a, b) {
-        return {c: "blah"};
+      foo: function (params) {
+        return {c: "Got params: ( " + params.a + ", " + params.b + ")"};
       },
       close: () {
         console.log("client disconnected");
