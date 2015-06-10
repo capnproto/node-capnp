@@ -1280,23 +1280,39 @@ struct FromJsConverter {
         break;
       }
       case capnp::schema::Type::ANY_POINTER:
-        KJ_IF_MAYBE(reader, unwrapReader(js)) {
-          return orphanage.newOrphanCopy(*reader);
-        } else KJ_IF_MAYBE(buffer, unwrapBuffer(js)) {
-          kj::Array<capnp::word> scratch;
-          kj::ArrayPtr<const capnp::word> words;
-          if (reinterpret_cast<uintptr_t>(buffer->begin()) % sizeof(capnp::word) != 0) {
-            // Array is not aligned.  We have to make a copy.  :(
-            scratch = kj::heapArray<capnp::word>(buffer->size() / sizeof(capnp::word));
-            memcpy(scratch.begin(), buffer->begin(), buffer->size());
-            words = scratch;
-          } else {
-            // Yay, array is aligned.
-            words = kj::arrayPtr(reinterpret_cast<const capnp::word*>(buffer->begin()),
-                                 buffer->size() / sizeof(capnp::word));
+        if (type.whichAnyPointerKind() == capnp::schema::Type::AnyPointer::Unconstrained::CAPABILITY) {
+          if (js->IsNull()) {
+            auto cap = capnp::Capability::Client(nullptr);
+            capnp::DynamicCapability::Client dynamicCap(kj::mv(cap));
+            return orphanage.newOrphanCopy(dynamicCap);
+          } else KJ_IF_MAYBE(cap, Wrapper::tryUnwrap<capnp::DynamicCapability::Client>(js)) {
+            return orphanage.newOrphanCopy(*cap);
+          } else if (!localCapType.IsEmpty()) {
+            // TODO(someday): handle schemaless local caps
+            v8::ThrowException(v8::Exception::TypeError(v8::String::New(
+                kj::str("Cannot use local cap for any pointer field, named: ",
+                        field.getProto().getName()).cStr())));
+            return nullptr;
           }
-          capnp::FlatArrayMessageReader reader(words);
-          return orphanage.newOrphanCopy(reader.getRoot<capnp::AnyPointer>());
+        } else {
+          KJ_IF_MAYBE(reader, unwrapReader(js)) {
+            return orphanage.newOrphanCopy(*reader);
+          } else KJ_IF_MAYBE(buffer, unwrapBuffer(js)) {
+            kj::Array<capnp::word> scratch;
+            kj::ArrayPtr<const capnp::word> words;
+            if (reinterpret_cast<uintptr_t>(buffer->begin()) % sizeof(capnp::word) != 0) {
+              // Array is not aligned.  We have to make a copy.  :(
+              scratch = kj::heapArray<capnp::word>(buffer->size() / sizeof(capnp::word));
+              memcpy(scratch.begin(), buffer->begin(), buffer->size());
+              words = scratch;
+            } else {
+              // Yay, array is aligned.
+              words = kj::arrayPtr(reinterpret_cast<const capnp::word*>(buffer->begin()),
+                                   buffer->size() / sizeof(capnp::word));
+            }
+            capnp::FlatArrayMessageReader reader(words);
+            return orphanage.newOrphanCopy(reader.getRoot<capnp::AnyPointer>());
+          }
         }
         break;
     }
