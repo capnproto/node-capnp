@@ -1288,11 +1288,12 @@ struct FromJsConverter {
           } else KJ_IF_MAYBE(cap, Wrapper::tryUnwrap<capnp::DynamicCapability::Client>(js)) {
             return orphanage.newOrphanCopy(*cap);
           } else if (!localCapType.IsEmpty()) {
-            // TODO(someday): handle schemaless local caps
-            v8::ThrowException(v8::Exception::TypeError(v8::String::New(
-                kj::str("Cannot use local cap for any pointer field, named: ",
-                        field.getProto().getName()).cStr())));
-            return nullptr;
+            v8::Handle<v8::Value> arg = js;
+            auto wrapped = localCapType->NewInstance(1, &arg);
+            if (!wrapped.IsEmpty()) {
+              auto cap = fromLocalCap(capnp::Schema::from<capnp::Capability>(), wrapped);
+              return orphanage.newOrphanCopy(cap);
+            }
           }
         } else {
           KJ_IF_MAYBE(reader, unwrapReader(js)) {
