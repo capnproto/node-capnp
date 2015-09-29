@@ -62,12 +62,66 @@ typedef unsigned int uint;
 #define UV_CALL(code, loop, ...) \
   KJ_ASSERT(code == 0, uv_strerror(uv_last_error(loop)), ##__VA_ARGS__)
 
+template <typename HandleType>
+class UvHandle {
+  // Encapsulates libuv handle lifetime into C++ object lifetime. This turns out to be hard.
+  // If the loop is no longer running, memory will leak.
+  //
+  // Use like:
+  //   UvHandle<uv_timer_t> timer(uv_timer_init, loop);
+  //   uv_timer_start(timer, &callback, 0, 0);
+
+public:
+  template <typename ConstructorFunc, typename... Args>
+  UvHandle(ConstructorFunc&& func, uv_loop_t* loop, Args&&... args): handle(new HandleType) {
+    if (func(loop, handle, kj::fwd<Args>(args)...) != 0) {
+      delete handle;
+      auto error = uv_strerror(uv_last_error(loop));
+      KJ_FAIL_ASSERT("creating UV handle failed", error);
+    }
+  }
+
+  ~UvHandle() {
+    uv_close(getBase(), &closeCallback);
+  }
+
+  inline HandleType& operator*() { return *handle; }
+  inline const HandleType& operator*() const { return *handle; }
+
+  inline HandleType* operator->() { return handle; }
+  inline HandleType* operator->() const { return handle; }
+
+  inline operator HandleType*() { return handle; }
+  inline operator const HandleType*() const { return handle; }
+
+  inline operator uv_handle_t*() { return reinterpret_cast<uv_handle_t*>(handle); }
+  inline operator const uv_handle_t*() const { return reinterpret_cast<uv_handle_t*>(handle); }
+
+  inline HandleType* get() { return handle; }
+  inline HandleType* get() const { return handle; }
+
+  inline uv_handle_t* getBase() { return reinterpret_cast<uv_handle_t*>(handle); }
+  inline uv_handle_t* getBase() const { return reinterpret_cast<uv_handle_t*>(handle); }
+
+private:
+  HandleType* handle;
+
+  static void closeCallback(uv_handle_t* handle) {
+    delete reinterpret_cast<HandleType*>(handle);
+  }
+};
+
 class UvEventPort: public kj::EventPort {
 public:
-  UvEventPort(uv_loop_t* loop): loop(loop), kjLoop(*this) {}
+  UvEventPort(uv_loop_t* loop)
+      : loop(loop),
+        timer(uv_timer_init, loop),
+        kjLoop(*this) {
+    timer->data = this;
+  }
   ~UvEventPort() {
     if (scheduled) {
-      UV_CALL(uv_timer_stop(&timer), loop);
+      UV_CALL(uv_timer_stop(timer), loop);
     }
   }
 
@@ -99,28 +153,24 @@ public:
 
 private:
   uv_loop_t* loop;
-  uv_timer_t timer;
+  UvHandle<uv_timer_t> timer;
   kj::EventLoop kjLoop;
   bool runnable = false;
   bool scheduled = false;
 
   void schedule() {
-    UV_CALL(uv_timer_init(loop, &timer), loop);
-    timer.data = this;
-    UV_CALL(uv_timer_start(&timer, &doRun, 0, 0), loop);
+    UV_CALL(uv_timer_start(timer, &doRun, 0, 0), loop);
     scheduled = true;
   }
 
   void run() {
     KJ_ASSERT(scheduled);
 
-    UV_CALL(uv_timer_stop(&timer), loop);
+    UV_CALL(uv_timer_stop(timer), loop);
 
     if (runnable) {
       kjLoop.run();
     }
-
-    scheduled = false;
 
     if (runnable) {
       // Apparently either we never became non-runnable, or we did but then became runnable again.
@@ -139,7 +189,7 @@ private:
   }
 };
 
-void setNonblocking(int fd) {
+static void setNonblocking(int fd) {
   int flags;
   KJ_SYSCALL(flags = fcntl(fd, F_GETFL));
   if ((flags & O_NONBLOCK) == 0) {
@@ -147,12 +197,31 @@ void setNonblocking(int fd) {
   }
 }
 
-void setCloseOnExec(int fd) {
+static void setCloseOnExec(int fd) {
   int flags;
   KJ_SYSCALL(flags = fcntl(fd, F_GETFD));
   if ((flags & FD_CLOEXEC) == 0) {
     KJ_SYSCALL(fcntl(fd, F_SETFD, flags | FD_CLOEXEC));
   }
+}
+
+static int applyFlags(int fd, uint flags) {
+  if (flags & kj::LowLevelAsyncIoProvider::ALREADY_NONBLOCK) {
+    KJ_DREQUIRE(fcntl(fd, F_GETFL) & O_NONBLOCK, "You claimed you set NONBLOCK, but you didn't.");
+  } else {
+    setNonblocking(fd);
+  }
+
+  if (flags & kj::LowLevelAsyncIoProvider::TAKE_OWNERSHIP) {
+    if (flags & kj::LowLevelAsyncIoProvider::ALREADY_CLOEXEC) {
+      KJ_DREQUIRE(fcntl(fd, F_GETFD) & FD_CLOEXEC,
+                  "You claimed you set CLOEXEC, but you didn't.");
+    } else {
+      setCloseOnExec(fd);
+    }
+  }
+
+  return fd;
 }
 
 static constexpr uint NEW_FD_FLAGS =
@@ -165,30 +234,16 @@ static constexpr uint NEW_FD_FLAGS =
 
 class OwnedFileDescriptor {
 public:
-  OwnedFileDescriptor(uv_loop_t* loop, int fd, uint flags): uvLoop(loop), fd(fd), flags(flags) {
-    if (flags & kj::LowLevelAsyncIoProvider::ALREADY_NONBLOCK) {
-      KJ_DREQUIRE(fcntl(fd, F_GETFL) & O_NONBLOCK, "You claimed you set NONBLOCK, but you didn't.");
-    } else {
-      setNonblocking(fd);
-    }
-
-    if (flags & kj::LowLevelAsyncIoProvider::TAKE_OWNERSHIP) {
-      if (flags & kj::LowLevelAsyncIoProvider::ALREADY_CLOEXEC) {
-        KJ_DREQUIRE(fcntl(fd, F_GETFD) & FD_CLOEXEC,
-                    "You claimed you set CLOEXEC, but you didn't.");
-      } else {
-        setCloseOnExec(fd);
-      }
-    }
-
-    UV_CALL(uv_poll_init(uvLoop, &uvPoller, fd), uvLoop);
-    UV_CALL(uv_poll_start(&uvPoller, 0, &pollCallback), uvLoop);
-    uvPoller.data = this;
+  OwnedFileDescriptor(uv_loop_t* loop, int fd, uint flags)
+      : uvLoop(loop), fd(applyFlags(fd, flags)), flags(flags),
+        uvPoller(uv_poll_init, uvLoop, fd) {
+    uvPoller->data = this;
+    UV_CALL(uv_poll_start(uvPoller, 0, &pollCallback), uvLoop);
   }
 
   ~OwnedFileDescriptor() noexcept(false) {
     if (!stopped) {
-      UV_CALL(uv_poll_stop(&uvPoller), uvLoop);
+      UV_CALL(uv_poll_stop(uvPoller), uvLoop);
     }
 
     // Don't use KJ_SYSCALL() here because close() should not be repeated on EINTR.
@@ -209,7 +264,7 @@ public:
     readable = kj::mv(paf.fulfiller);
 
     int flags = UV_READABLE | (writable == nullptr ? 0 : UV_WRITABLE);
-    UV_CALL(uv_poll_start(&uvPoller, flags, &pollCallback), uvLoop);
+    UV_CALL(uv_poll_start(uvPoller, flags, &pollCallback), uvLoop);
 
     return kj::mv(paf.promise);
   }
@@ -223,7 +278,7 @@ public:
     writable = kj::mv(paf.fulfiller);
 
     int flags = UV_WRITABLE | (readable == nullptr ? 0 : UV_READABLE);
-    UV_CALL(uv_poll_start(&uvPoller, flags, &pollCallback), uvLoop);
+    UV_CALL(uv_poll_start(uvPoller, flags, &pollCallback), uvLoop);
 
     return kj::mv(paf.promise);
   }
@@ -237,7 +292,7 @@ private:
   kj::Maybe<kj::Own<kj::PromiseFulfiller<void>>> readable;
   kj::Maybe<kj::Own<kj::PromiseFulfiller<void>>> writable;
   bool stopped = false;
-  uv_poll_t uvPoller;
+  UvHandle<uv_poll_t> uvPoller;
 
   static void pollCallback(uv_poll_t* handle, int status, int events) {
     reinterpret_cast<OwnedFileDescriptor*>(handle->data)->pollDone(status, events);
@@ -276,7 +331,7 @@ private:
       // Update the poll flags.
       int flags = (readable == nullptr ? 0 : UV_READABLE) |
                   (writable == nullptr ? 0 : UV_WRITABLE);
-      UV_CALL(uv_poll_start(&uvPoller, flags, &pollCallback), uvLoop);
+      UV_CALL(uv_poll_start(uvPoller, flags, &pollCallback), uvLoop);
     }
   }
 };
