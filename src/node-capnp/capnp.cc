@@ -186,7 +186,7 @@ private:
   static void doRun(uv_timer_t* handle, int status) {
     UvEventPort* self = handle == nullptr ? nullptr : reinterpret_cast<UvEventPort*>(handle->data);
 
-    if (status == 0) {
+    if (status != 0) {
       if (self == nullptr) {
         KJ_LOG(WARNING, "libuv timer callback called with non-zero status",
                status, handle, self);
