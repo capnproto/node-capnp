@@ -176,6 +176,7 @@ private:
       // Apparently either we never became non-runnable, or we did but then became runnable again.
       // Since `scheduled` has been true the whole time, we won't have been rescheduled, so do that
       // now.
+      KJ_LOG(WARNING, "still runnable after kjLoop.run()?");
       schedule();
     } else {
       scheduled = false;
@@ -183,9 +184,21 @@ private:
   }
 
   static void doRun(uv_timer_t* handle, int status) {
+    UvEventPort* self = handle == nullptr ? nullptr : reinterpret_cast<UvEventPort*>(handle->data);
+
     if (status == 0) {
-      reinterpret_cast<UvEventPort*>(handle->data)->run();
+      if (self == nullptr) {
+        KJ_LOG(WARNING, "libuv timer callback called with non-zero status",
+               status, handle, self);
+        return;
+      } else {
+        KJ_LOG(WARNING, "libuv timer callback called with non-zero status",
+               status, self->runnable, self->scheduled);
+        if (!self->scheduled) return;
+      }
     }
+
+    self->run();
   }
 };
 
