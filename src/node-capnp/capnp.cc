@@ -56,6 +56,8 @@ namespace {  // so we get warnings if anything declared in this file is left und
 typedef unsigned char byte;
 typedef unsigned int uint;
 
+bool verboseDebugLogging = false;
+
 // =======================================================================================
 // KJ <-> libuv glue.
 
@@ -143,12 +145,17 @@ public:
   }
 
   void setRunnable(bool runnable) override {
+    if (verboseDebugLogging) { KJ_LOG(INFO, "setRunnable", runnable, this->runnable, this->scheduled); }
     if (runnable != this->runnable) {
       this->runnable = runnable;
       if (runnable && !scheduled) {
         schedule();
       }
     }
+  }
+
+  void logState() {
+    KJ_LOG(INFO, "UvEventPort state", runnable, scheduled);
   }
 
 private:
@@ -159,11 +166,14 @@ private:
   bool scheduled = false;
 
   void schedule() {
+    if (verboseDebugLogging) { KJ_LOG(INFO, "schedule"); }
     UV_CALL(uv_timer_start(timer, &doRun, 0, 0), loop);
+    if (verboseDebugLogging) { KJ_LOG(INFO, "scheduled"); }
     scheduled = true;
   }
 
   void run() {
+    if (verboseDebugLogging) { KJ_LOG(INFO, "run"); }
     KJ_ASSERT(scheduled);
 
     UV_CALL(uv_timer_stop(timer), loop);
@@ -181,6 +191,8 @@ private:
     } else {
       scheduled = false;
     }
+
+    if (verboseDebugLogging) { KJ_LOG(INFO, "run done"); }
   }
 
   static void doRun(uv_timer_t* handle, int status) {
@@ -612,6 +624,8 @@ public:
     // TODO(soon):  Implement this.
     KJ_FAIL_ASSERT("Timers not implemented.");
   }
+
+  void logState() { return eventPort.logState(); }
 
 private:
   UvEventPort eventPort;
@@ -2362,6 +2376,30 @@ v8::Handle<v8::Value> throw_(const v8::Arguments& args) {
   });
 }
 
+v8::Handle<v8::Value> enableVerboseDebugLogging(const v8::Arguments& args) {
+  // enableVerboseDebugLogging(flag) -> void
+  //
+  // If `flag` is true, turn on advanced debug logging.
+
+  KJV8_UNWRAP(CapnpContext, context, args.Data());
+
+  return liftKj([&]() -> v8::Handle<v8::Value> {
+    bool enable = args[0]->BooleanValue();
+    if (enable != verboseDebugLogging) {
+      verboseDebugLogging = enable;
+      if (verboseDebugLogging) {
+        kj::_::Debug::setLogLevel(kj::LogSeverity::INFO);
+        KJ_LOG(INFO, "node-capnp ulta-verbose debug logging now enabled; hope you track down the bug!");
+        context.llaiop.logState();
+      } else {
+        KJ_LOG(INFO, "node-capnp ulta-verbose debug logging stopping here");
+        kj::_::Debug::setLogLevel(kj::LogSeverity::WARNING);
+      }
+    }
+    return v8::Undefined();
+  });
+}
+
 // -----------------------------------------------------------------------------
 
 void init(v8::Handle<v8::Object> exports) {
@@ -2406,6 +2444,8 @@ void init(v8::Handle<v8::Object> exports) {
     mapFunction("getResults", getResults);
     mapFunction("return_", return_);
     mapFunction("throw_", throw_);
+
+    mapFunction("enableVerboseDebugLogging", enableVerboseDebugLogging);
 
     return emptyHandle;
   });

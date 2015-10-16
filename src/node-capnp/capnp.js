@@ -276,3 +276,4 @@ exports.bytesToPreorder = function(schema, buf) {
   return v8capnp.toBytes(builder);
 }
 
+exports.enableVerboseDebugLogging = v8capnp.enableVerboseDebugLogging;
