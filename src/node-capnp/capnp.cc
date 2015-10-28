@@ -173,7 +173,14 @@ private:
   }
 
   void run() {
-    if (verboseDebugLogging) { KJ_LOG(INFO, "run"); }
+    if (verboseDebugLogging) {
+      KJ_LOG(INFO, "run");
+      kj::evalLater([]() {
+        KJ_LOG(INFO, "evalLater() executed");
+      }).detach([](kj::Exception&& e) {
+        KJ_LOG(ERROR, e);
+      });
+    }
     KJ_ASSERT(scheduled);
 
     UV_CALL(uv_timer_stop(timer), loop);
