@@ -270,11 +270,17 @@ public:
       : uvLoop(loop), fd(applyFlags(fd, flags)), flags(flags),
         uvPoller(uv_poll_init, uvLoop, fd) {
     uvPoller->data = this;
+    // TODO(now): This uv_poll_start() is redundant.
     UV_CALL(uv_poll_start(uvPoller, 0, &pollCallback), uvLoop);
+    if (verboseDebugLogging) { KJ_LOG(INFO, "created socket", fd); }
   }
 
   ~OwnedFileDescriptor() noexcept(false) {
+    if (verboseDebugLogging) { KJ_LOG(INFO, "destroying socket", fd); }
+
     if (!stopped) {
+      // TODO(now): This uv_poll_stop() is redundant so long as we can make sure that uvPoller is
+      //   destroyed before we close the descriptor.
       UV_CALL(uv_poll_stop(uvPoller), uvLoop);
     }
 
@@ -297,6 +303,12 @@ public:
 
     int flags = UV_READABLE | (writable == nullptr ? 0 : UV_WRITABLE);
     UV_CALL(uv_poll_start(uvPoller, flags, &pollCallback), uvLoop);
+
+    if (verboseDebugLogging) {
+      KJ_LOG(INFO, "waiting for readable",
+                   &uvPoller->io_watcher, uvLoop->watchers[fd],
+                   ngx_queue_empty(&uvPoller->io_watcher.watcher_queue));
+    }
 
     return kj::mv(paf.promise);
   }
@@ -331,6 +343,10 @@ private:
   }
 
   void pollDone(int status, int events) {
+    if (verboseDebugLogging) {
+      KJ_LOG(INFO, "poll event", status, events, readable == nullptr, writable == nullptr);
+    }
+
     if (status != 0) {
       // Error.  libuv produces a non-zero status if polling produced POLLERR.  The error code
       // reported by libuv is always EBADF, even if the file descriptor is perfectly legitimate but
