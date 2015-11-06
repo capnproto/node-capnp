@@ -270,7 +270,7 @@ public:
       : uvLoop(loop), fd(applyFlags(fd, flags)), flags(flags),
         uvPoller(uv_poll_init, uvLoop, fd) {
     uvPoller->data = this;
-    // TODO(now): This uv_poll_start() is redundant.
+    // TODO(soon): This uv_poll_start() is redundant.
     UV_CALL(uv_poll_start(uvPoller, 0, &pollCallback), uvLoop);
     if (verboseDebugLogging) { KJ_LOG(INFO, "created socket", fd); }
   }
@@ -279,7 +279,7 @@ public:
     if (verboseDebugLogging) { KJ_LOG(INFO, "destroying socket", fd); }
 
     if (!stopped) {
-      // TODO(now): This uv_poll_stop() is redundant so long as we can make sure that uvPoller is
+      // TODO(soon): This uv_poll_stop() is redundant so long as we can make sure that uvPoller is
       //   destroyed before we close the descriptor.
       UV_CALL(uv_poll_stop(uvPoller), uvLoop);
     }
@@ -304,11 +304,7 @@ public:
     int flags = UV_READABLE | (writable == nullptr ? 0 : UV_WRITABLE);
     UV_CALL(uv_poll_start(uvPoller, flags, &pollCallback), uvLoop);
 
-    if (verboseDebugLogging) {
-      KJ_LOG(INFO, "waiting for readable",
-                   &uvPoller->io_watcher, uvLoop->watchers[fd],
-                   ngx_queue_empty(&uvPoller->io_watcher.watcher_queue));
-    }
+    if (verboseDebugLogging) { KJ_LOG(INFO, "waiting for readable", this, fd); }
 
     return kj::mv(paf.promise);
   }
@@ -323,6 +319,8 @@ public:
 
     int flags = UV_WRITABLE | (readable == nullptr ? 0 : UV_READABLE);
     UV_CALL(uv_poll_start(uvPoller, flags, &pollCallback), uvLoop);
+
+    if (verboseDebugLogging) { KJ_LOG(INFO, "waiting for writable", this, fd); }
 
     return kj::mv(paf.promise);
   }
@@ -344,7 +342,7 @@ private:
 
   void pollDone(int status, int events) {
     if (verboseDebugLogging) {
-      KJ_LOG(INFO, "poll event", status, events, readable == nullptr, writable == nullptr);
+      KJ_LOG(INFO, "poll event", this, fd, status, events, readable == nullptr, writable == nullptr);
     }
 
     if (status != 0) {
@@ -459,6 +457,8 @@ private:
       return alreadyRead;
     }
 
+    if (verboseDebugLogging) { KJ_LOG(INFO, "did read", fd, n); }
+
     if (n < 0) {
       // Read would block.
       return onReadable().then([=]() {
@@ -514,6 +514,8 @@ private:
     error:
       return kj::READY_NOW;
     }
+
+    if (verboseDebugLogging) { KJ_LOG(INFO, "did write", fd, writeResult); }
 
     // A negative result means EAGAIN, which we can treat the same as having written zero bytes.
     size_t n = writeResult < 0 ? 0 : writeResult;
