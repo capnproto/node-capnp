@@ -1940,8 +1940,9 @@ v8::Handle<v8::Value> closeCap(const v8::Arguments& args) {
   KJV8_UNWRAP(capnp::DynamicCapability::Client, cap, args[0]);
 
   return liftKj([&]() -> v8::Handle<v8::Value> {
-    // Overwrite with a null cap.
-    cap = capnp::Capability::Client(capnp::newBrokenCap("Capability has been closed."))
+    // Overwrite with a disconnected cap.
+    cap = capnp::Capability::Client(
+        capnp::newBrokenCap(KJ_EXCEPTION(DISCONNECTED, "Capability has been closed.")))
         .castAs<capnp::DynamicCapability>(cap.getSchema());
 
     return v8::Undefined();
