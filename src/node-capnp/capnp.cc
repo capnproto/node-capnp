@@ -45,6 +45,8 @@
 #include <set>
 #include <stdlib.h>
 #include <sys/uio.h>
+#include <sys/ioctl.h>
+#include <sys/poll.h>
 
 #include <typeinfo>
 #include <typeindex>
@@ -329,6 +331,22 @@ protected:
   uv_loop_t* const uvLoop;
   const int fd;
 
+  void logInfo() {
+    KJ_ASSERT(verboseDebugLogging);
+    int available;
+    KJ_SYSCALL(ioctl(fd, FIONREAD, &available));
+
+    struct pollfd pfd;
+    memset(&pfd, 0, sizeof(pfd));
+    pfd.fd = fd;
+    pfd.events = POLLIN | POLLOUT;
+    int pollResult = poll(&pfd, 1, 0);
+    KJ_LOG(INFO, "closing socket", fd, available, pollResult, pfd.revents,
+           uvPoller->io_watcher.events, uvPoller->io_watcher.pevents,
+           uvPoller->io_watcher.fd, &uvPoller->io_watcher, uvLoop->watchers[fd],
+           ngx_queue_empty(&uvPoller->io_watcher.watcher_queue));
+  }
+
 private:
   uint flags;
   kj::Maybe<kj::Own<kj::PromiseFulfiller<void>>> readable;
@@ -440,6 +458,10 @@ public:
   }
 
   void shutdownWrite() override {
+    if (verboseDebugLogging) {
+      logInfo();
+    }
+
     // There's no legitimate way to get an AsyncStreamFd that isn't a socket through the
     // UnixAsyncIoProvider interface.
     KJ_SYSCALL(shutdown(fd, SHUT_WR));
@@ -2416,12 +2438,16 @@ v8::Handle<v8::Value> enableVerboseDebugLogging(const v8::Arguments& args) {
       if (verboseDebugLogging) {
         kj::_::Debug::setLogLevel(kj::LogSeverity::INFO);
         KJ_LOG(INFO, "node-capnp ulta-verbose debug logging now enabled; hope you track down the bug!");
-        context.llaiop.logState();
       } else {
         KJ_LOG(INFO, "node-capnp ulta-verbose debug logging stopping here");
         kj::_::Debug::setLogLevel(kj::LogSeverity::WARNING);
       }
     }
+
+    if (enable) {
+      context.llaiop.logState();
+    }
+
     return v8::Undefined();
   });
 }
