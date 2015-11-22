@@ -2121,6 +2121,8 @@ v8::Handle<v8::Value> send(const v8::Arguments& args) {
     OwnHandle<v8::Function> callback = v8::Handle<v8::Function>(v8::Function::Cast(*args[1]));
     OwnHandle<v8::Function> errorCallback = v8::Handle<v8::Function>(v8::Function::Cast(*args[2]));
 
+    if (verboseDebugLogging) { KJ_LOG(INFO, "making call"); }
+
     auto promise = KJ_REQUIRE_NONNULL(request.request, "Request already sent.").send();
     request.request = nullptr;
 
@@ -2138,6 +2140,7 @@ v8::Handle<v8::Value> send(const v8::Arguments& args) {
         .then(kj::mvCapture(callback,
           [&context](OwnHandle<v8::Function>&& callback,
                      capnp::Response<capnp::DynamicStruct>&& response) {
+      if (verboseDebugLogging) { KJ_LOG(INFO, "call return"); }
       v8::HandleScope scope;
       v8::Handle<v8::Value> args[1] = {
         context.wrapper.wrapCopy(ClientResponse { kj::mv(response) })
@@ -2153,6 +2156,7 @@ v8::Handle<v8::Value> send(const v8::Arguments& args) {
     })).detach(kj::mvCapture(errorCallback,
           [&context](OwnHandle<v8::Function>&& errorCallback,
                      kj::Exception&& exception) {
+      if (verboseDebugLogging) { KJ_LOG(INFO, "call failed"); }
       v8::HandleScope scope;
       v8::Handle<v8::Value> args[1] = { toJsException(kj::mv(exception)) };
       v8::TryCatch tryCatch;
