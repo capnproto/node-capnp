@@ -153,12 +153,23 @@ function makeMethod(cap, method) {
     v8capnp.fromJs(req, Array.prototype.slice.call(arguments, 0), LocalCapWrapper);
     var pipeline;
     var promise = new Promise(function (resolve, reject) {
-      pipeline = v8capnp.send(req, resolve, reject, Capability);
+      pipeline = v8capnp.send(req, function (x) {
+        if (verboseDebugLogging) console.log("capnp.js: returned to JS 1", v8capnp.methodName(method));
+        resolve(x);
+      }, function (x) {
+        if (verboseDebugLogging) console.log("capnp.js: threw to JS 1", v8capnp.methodName(method), x);
+        reject(x);
+      }, Capability);
     }).then(function (response) {
+      if (verboseDebugLogging) console.log("capnp.js: returned to JS 2", v8capnp.methodName(method));
       var result = v8capnp.toJs(response, Capability);
       v8capnp.release(response);
       settleCaps(pipeline, result);
+      if (verboseDebugLogging) console.log("capnp.js: returned to JS 3", v8capnp.methodName(method));
       return result;
+    }, function (err) {
+      if (verboseDebugLogging) console.log("capnp.js: threw to JS 2", v8capnp.methodName(method));
+      throw err;
     });
     makeRemotePromise(promise, pipeline);
     return promise;
@@ -276,4 +287,8 @@ exports.bytesToPreorder = function(schema, buf) {
   return v8capnp.toBytes(builder);
 }
 
-exports.enableVerboseDebugLogging = v8capnp.enableVerboseDebugLogging;
+var verboseDebugLogging = false;
+exports.enableVerboseDebugLogging = function (flag) {
+  verboseDebugLogging = flag;
+  v8capnp.enableVerboseDebugLogging(flag);
+}

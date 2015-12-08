@@ -2456,6 +2456,17 @@ v8::Handle<v8::Value> enableVerboseDebugLogging(const v8::Arguments& args) {
   });
 }
 
+v8::Handle<v8::Value> methodName(const v8::Arguments& args) {
+  // methodName(method) -> string
+
+  KJV8_UNWRAP(CapnpContext, context, args.Data());
+  KJV8_UNWRAP(capnp::InterfaceSchema::Method, method, args[0]);
+
+  return liftKj([&]() -> v8::Handle<v8::Value> {
+    return v8::String::NewSymbol(method.getProto().getName().cStr());
+  });
+}
+
 // -----------------------------------------------------------------------------
 
 void init(v8::Handle<v8::Object> exports) {
@@ -2502,6 +2513,7 @@ void init(v8::Handle<v8::Object> exports) {
     mapFunction("throw_", throw_);
 
     mapFunction("enableVerboseDebugLogging", enableVerboseDebugLogging);
+    mapFunction("methodName", methodName);
 
     return emptyHandle;
   });
