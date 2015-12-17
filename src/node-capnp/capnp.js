@@ -171,7 +171,9 @@ function makeMethod(cap, method) {
       if (verboseDebugLogging) console.log("capnp.js: threw to JS 2", v8capnp.methodName(method));
       throw err;
     });
+    if (verboseDebugLogging) console.log("capnp.js: before makeRemotePromise:", v8capnp.methodName(method), promise);
     makeRemotePromise(promise, pipeline);
+    if (verboseDebugLogging) console.log("capnp.js: after makeRemotePromise:", v8capnp.methodName(method), promise);
     return promise;
   }
 }
@@ -290,5 +292,6 @@ exports.bytesToPreorder = function(schema, buf) {
 var verboseDebugLogging = false;
 exports.enableVerboseDebugLogging = function (flag) {
   verboseDebugLogging = flag;
-  v8capnp.enableVerboseDebugLogging(flag);
+  // Turns out the problem isn't even in C++, so don't  bother enabling its verbose debug logging.
+  //v8capnp.enableVerboseDebugLogging(flag);
 }
