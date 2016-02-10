@@ -1454,7 +1454,7 @@ struct FromJsConverter {
 
   bool fieldFromJs(capnp::DynamicStruct::Builder builder, capnp::StructSchema::Field field,
                    v8::Handle<v8::Value> js) {
-    if (js->IsNull() || js->IsUndefined()) {
+    if ((js->IsNull() || js->IsUndefined()) && !field.getType().isVoid()) {
       return true;
     }
     auto proto = field.getProto();
