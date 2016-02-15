@@ -17,9 +17,6 @@
   ],
 
   "main": "src/node-capnp/capnp.js",
-  "peerDependencies": {
-    "es6-promise": "1.x"
-  },
   "scripts": {
     "install": "node ./build.js",
     "test": "node src/node-capnp/capnp-test.js"

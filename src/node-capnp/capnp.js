@@ -45,7 +45,6 @@ try {
 }
 
 var v8capnp = require(modPath);
-var Promise = require("es6-promise").Promise;
 
 var importPath = [];
 for (var i in module.paths) {

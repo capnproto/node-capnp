@@ -22,7 +22,6 @@
 var fs = require("fs");
 var capnp = require("./capnp");
 var assert = require("assert");
-var Promise = require("es6-promise").Promise;
 var spawn = require("child_process").spawn;
 
 var goldenBinary;
