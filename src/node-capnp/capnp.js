@@ -255,6 +255,8 @@ exports.connect = function (addr, bootstrapCap) {
   return new Connection(v8capnp.connect(addr, bootstrapCap));
 }
 
+exports.expectedSizeFromPrefix = v8capnp.expectedSizeFromPrefix;
+
 exports.parse = function (schema, buffer) {
   var reader = v8capnp.fromBytes(buffer, schema);
   return v8capnp.toJs(reader, Capability);
@@ -274,4 +276,3 @@ exports.bytesToPreorder = function(schema, buf) {
   var builder = v8capnp.copyBuilder(reader);
   return v8capnp.toBytes(builder);
 }
-

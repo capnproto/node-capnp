@@ -1706,6 +1706,32 @@ void toJsParams(const v8::FunctionCallbackInfo<v8::Value>& args) {
 
 // -----------------------------------------------------------------------------
 
+void expectedSizeFromPrefix(const v8::FunctionCallbackInfo<v8::Value>& args) {
+  // expectedSizeFromPrefix(buffer) -> int
+
+  KJV8_UNWRAP(CapnpContext, context, args.Data());
+
+  v8::Handle<v8::Value> bufferHandle = args[0];
+  KJV8_UNWRAP_BUFFER(buffer, bufferHandle);
+
+  liftKj(args, [&]() -> v8::Handle<v8::Value> {
+    kj::ArrayPtr<const capnp::word> words;
+    kj::Array<capnp::word> copy;
+    if (reinterpret_cast<uintptr_t>(buffer.begin()) % sizeof(capnp::word) != 0) {
+      // Array is not aligned.  We have to make a copy.  :(
+      copy = kj::heapArray<capnp::word>(buffer.size() / sizeof(capnp::word));
+      memcpy(copy.begin(), buffer.begin(), copy.asBytes().size());
+    } else {
+      // Yay, array is aligned.
+      words = kj::arrayPtr(reinterpret_cast<const capnp::word*>(buffer.begin()),
+                           buffer.size() / sizeof(capnp::word));
+    }
+
+    return v8::Integer::New(args.GetIsolate(),
+        capnp::expectedSizeInWordsFromPrefix(words) * sizeof(capnp::word));
+  });
+}
+
 void fromBytes(const v8::FunctionCallbackInfo<v8::Value>& args) {
   // fromBytes(buffer, schema) -> reader
 
@@ -1724,7 +1750,7 @@ void fromBytes(const v8::FunctionCallbackInfo<v8::Value>& args) {
     if (reinterpret_cast<uintptr_t>(buffer.begin()) % sizeof(capnp::word) != 0) {
       // Array is not aligned.  We have to make a copy.  :(
       auto array = kj::heapArray<capnp::word>(buffer.size() / sizeof(capnp::word));
-      memcpy(array.begin(), buffer.begin(), buffer.size());
+      memcpy(array.begin(), buffer.begin(), array.asBytes().size());
       words = array;
       bufferHandle = context.wrapper.wrapCopy(kj::mv(array));
     } else {
@@ -2371,6 +2397,7 @@ void init(v8::Handle<v8::Object> exports) {
   mapFunction("fromJs", fromJs);
   mapFunction("toJs", toJs);
   mapFunction("toJsParams", toJsParams);
+  mapFunction("expectedSizeFromPrefix", expectedSizeFromPrefix);
   mapFunction("fromBytes", fromBytes);
   mapFunction("toBytes", toBytes);
   mapFunction("connect", connect);
