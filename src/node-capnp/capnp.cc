@@ -1807,6 +1807,22 @@ void toBytes(const v8::FunctionCallbackInfo<v8::Value>& args) {
   });
 }
 
+void toBytesPacked(const v8::FunctionCallbackInfo<v8::Value>& args) {
+  // toBytes(builder) -> buffer
+
+  KJV8_UNWRAP(StructBuilder, builder, args[0]);
+
+  liftKj(args, [&]() -> v8::Handle<v8::Value> {
+    auto unpackedSize = computeSerializedSizeInWords(builder.message) * sizeof(capnp::word);
+    auto packedSizeUpperBound = unpackedSize * 258 / 256;
+    auto oversizedBuf = kj::heapArray<byte>(packedSizeUpperBound);
+    kj::ArrayOutputStream outputStream(oversizedBuf);
+    capnp::writePackedMessage(outputStream, builder.message);
+    auto packedMessage = heapArray(outputStream.getArray());
+    return wrapBuffer(kj::mv(packedMessage));
+  });
+}
+
 // -----------------------------------------------------------------------------
 
 class RpcConnection: public kj::Refcounted {
@@ -2433,6 +2449,7 @@ void init(v8::Handle<v8::Object> exports) {
   mapFunction("fromBytes", fromBytes);
   mapFunction("fromBytesPacked", fromBytesPacked);
   mapFunction("toBytes", toBytes);
+  mapFunction("toBytesPacked", toBytesPacked);
   mapFunction("connect", connect);
   mapFunction("disconnect", disconnect);
   mapFunction("restore", restore);

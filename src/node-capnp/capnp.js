@@ -273,6 +273,12 @@ exports.serialize = function (schema, value) {
   return v8capnp.toBytes(builder);
 }
 
+exports.serializePacked = function (schema, value) {
+  var builder = v8capnp.newBuilder(schema);
+  v8capnp.fromJs(builder, value, LocalCapWrapper);
+  return v8capnp.toBytesPacked(builder);
+}
+
 exports.Capability = Capability;
 
 exports.bytesToPreorder = function(schema, buf) {
