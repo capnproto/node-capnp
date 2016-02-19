@@ -1840,7 +1840,7 @@ v8::Handle<v8::Value> toBytesPacked(const v8::Arguments& args) {
   return liftKj([&]() -> v8::Handle<v8::Value> {
     auto unpackedSize = computeSerializedSizeInWords(builder.message) * sizeof(capnp::word);
     // Packed encoding can add 2 bytes of overhead per 2k segment reached.
-    auto packedOverhead = (((unpackedSize - 1) / 2048) + 1) * 2;
+    auto packedOverhead = ((unpackedSize + 2047) / 2048) * 2;
     auto packedSizeUpperBound = unpackedSize + packedOverhead;
     auto oversizedBuf = kj::heapArray<byte>(packedSizeUpperBound);
     kj::ArrayOutputStream outputStream(oversizedBuf);
