@@ -261,10 +261,21 @@ exports.parse = function (schema, buffer) {
   return v8capnp.toJs(reader, Capability);
 }
 
+exports.parsePacked = function (schema, buffer) {
+  var reader = v8capnp.fromBytesPacked(buffer, schema);
+  return v8capnp.toJs(reader, Capability);
+}
+
 exports.serialize = function (schema, value) {
   var builder = v8capnp.newBuilder(schema);
   v8capnp.fromJs(builder, value, LocalCapWrapper);
   return v8capnp.toBytes(builder);
+}
+
+exports.serializePacked = function (schema, value) {
+  var builder = v8capnp.newBuilder(schema);
+  v8capnp.fromJs(builder, value, LocalCapWrapper);
+  return v8capnp.toBytesPacked(builder);
 }
 
 exports.Capability = Capability;

@@ -26,12 +26,15 @@ var Promise = require("es6-promise").Promise;
 var spawn = require("child_process").spawn;
 
 var goldenBinary;
+var goldenPackedBinary;
 try {
   // Works in Ekam build.
   goldenBinary = fs.readFileSync("node-capnp/testdata/binary");
+  goldenPackedBinary = fs.readFileSync("node-capnp/testdata/packedbinary");
 } catch (ex) {
   // Works in npm build.
   goldenBinary = fs.readFileSync("src/node-capnp/testdata/binary");
+  goldenPackedBinary = fs.readFileSync("src/node-capnp/testdata/packedbinary");
 }
 
 var test = require("./test.capnp");
@@ -53,6 +56,19 @@ assert.equal(3456789012, test.TestConstants.uint32Const);
 assert.equal("foo", test.TestConstants.textConst);
 assert.equal("baz", test.TestConstants.structConst.textField);
 assert.equal("xyzzy", test.TestConstants.textListConst[1]);
+
+// Test packed serialization/deserialization
+
+var parsedPacked = capnp.parsePacked(test.TestAllTypes, goldenPackedBinary);
+var roundTrippedPacked = capnp.serializePacked(test.TestAllTypes, parsedPacked);
+assert.equal(goldenPackedBinary.length, roundTrippedPacked.length, "Round trip changed size?");
+assert.equal(goldenPackedBinary.toString("base64"), roundTrippedPacked.toString("base64"), "Round trip lost data?");
+
+// TODO(someday): do a more thorough deep equality comparison of parsed and parsedPacked
+var keys = ["voidField", "boolField", "int8Field", "int16Field", "int32Field", "int64Field"];
+for (var key in keys) {
+  assert.equal(parsed[key], parsedPacked[key]);
+}
 
 // =======================================================================================
 
