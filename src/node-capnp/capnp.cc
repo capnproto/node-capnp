@@ -1122,12 +1122,24 @@ struct StructReader {
       : message(data), root(message.getRoot<capnp::DynamicStruct>(schema)) {}
 };
 
+struct FlatStructReader {
+  kj::ArrayPtr<const capnp::word> segments[1];
+  capnp::SegmentArrayMessageReader message;
+  capnp::DynamicStruct::Reader root;
+
+  FlatStructReader(kj::ArrayPtr<const capnp::word> data, capnp::StructSchema schema)
+      : segments{data}, message(segments),
+        root(message.getRoot<capnp::DynamicStruct>(schema)) {}
+};
+
 struct PackedStructReader {
+  kj::ArrayInputStream inputStream;
   capnp::PackedMessageReader message;
   capnp::DynamicStruct::Reader root;
 
-  PackedStructReader(kj::BufferedInputStream& inputStream, capnp::StructSchema schema)
-      : message(inputStream), root(message.getRoot<capnp::DynamicStruct>(schema)) {}
+  PackedStructReader(kj::ArrayPtr<const byte> bytes, capnp::StructSchema schema)
+      : inputStream(bytes), message(inputStream),
+        root(message.getRoot<capnp::DynamicStruct>(schema)) {}
 };
 
 struct ServerRequest {
@@ -1156,6 +1168,8 @@ kj::Maybe<capnp::DynamicStruct::Reader> unwrapReader(v8::Handle<v8::Value> handl
   } else KJ_IF_MAYBE(reader, Wrapper::tryUnwrap<StructReader>(handle)) {
     return reader->root;
   } else KJ_IF_MAYBE(reader, Wrapper::tryUnwrap<PackedStructReader>(handle)) {
+    return reader->root;
+  } else KJ_IF_MAYBE(reader, Wrapper::tryUnwrap<FlatStructReader>(handle)) {
     return reader->root;
   } else KJ_IF_MAYBE(request, Wrapper::tryUnwrap<ServerRequest>(handle)) {
     return request->params;
@@ -1715,7 +1729,7 @@ v8::Handle<v8::Value> toJsParams(const v8::Arguments& args) {
 // -----------------------------------------------------------------------------
 
 v8::Handle<v8::Value> fromBytes(const v8::Arguments& args) {
-  // fromBytes(buffer, schema) -> reader
+  // fromBytes(buffer, schema, options) -> reader
 
   KJV8_UNWRAP(CapnpContext, context, args.Data());
 
@@ -1728,72 +1742,92 @@ v8::Handle<v8::Value> fromBytes(const v8::Arguments& args) {
     return emptyHandle;
   }
 
+  if (!args[2]->IsObject()) {
+    KJV8_TYPE_ERROR(obj, v8::Object);
+  }
+
   return liftKj([&]() -> v8::Handle<v8::Value> {
-    kj::ArrayPtr<const capnp::word> words;
-    if (reinterpret_cast<uintptr_t>(buffer.begin()) % sizeof(capnp::word) != 0) {
-      // Array is not aligned.  We have to make a copy.  :(
-      auto array = kj::heapArray<capnp::word>(buffer.size() / sizeof(capnp::word));
-      memcpy(array.begin(), buffer.begin(), buffer.size());
-      words = array;
-      bufferHandle = context.wrapper.wrapCopy(kj::mv(array));
+    auto options = args[2].As<v8::Object>();
+    bool packed = options->Get(v8::String::NewSymbol("packed"))->BooleanValue();
+    bool flat = options->Get(v8::String::NewSymbol("flat"))->BooleanValue();
+
+    v8::Local<v8::Object> wrapper;
+
+    if (packed) {
+      if (flat) {
+        auto bytes = kj::arrayPtr(buffer.begin(), buffer.size());
+        auto words = kj::heapArray<capnp::word>(capnp::computeUnpackedSizeInWords(bytes));
+        kj::ArrayInputStream input(bytes);
+        capnp::_::PackedInputStream unpacker(input);
+        unpacker.read(words.asBytes().begin(), words.asBytes().size());
+        wrapper = context.wrapper.wrap(new FlatStructReader(words, schema.asStruct()));
+        bufferHandle = context.wrapper.wrapCopy(kj::mv(words));
+      } else {
+        wrapper = context.wrapper.wrap(new PackedStructReader(
+            kj::arrayPtr(buffer.begin(), buffer.size()), schema.asStruct()));
+      }
     } else {
-      // Yay, array is aligned.
-      words = kj::arrayPtr(reinterpret_cast<const capnp::word*>(buffer.begin()),
-                           buffer.size() / sizeof(capnp::word));
+      kj::ArrayPtr<const capnp::word> words;
+      if (reinterpret_cast<uintptr_t>(buffer.begin()) % sizeof(capnp::word) != 0) {
+        // Array is not aligned.  We have to make a copy.  :(
+        auto array = kj::heapArray<capnp::word>(buffer.size() / sizeof(capnp::word));
+        memcpy(array.begin(), buffer.begin(), buffer.size());
+        words = array;
+        bufferHandle = context.wrapper.wrapCopy(kj::mv(array));
+      } else {
+        // Yay, array is aligned.
+        words = kj::arrayPtr(reinterpret_cast<const capnp::word*>(buffer.begin()),
+                             buffer.size() / sizeof(capnp::word));
+      }
+
+      if (flat) {
+        wrapper = context.wrapper.wrap(new FlatStructReader(words, schema.asStruct()));
+      } else {
+        wrapper = context.wrapper.wrap(new StructReader(words, schema.asStruct()));
+      }
     }
 
-    auto wrapper = context.wrapper.wrap(new StructReader(words, schema.asStruct()));
-    wrapper->SetHiddenValue(v8::String::NewSymbol("buffer"), bufferHandle);
-    return wrapper;
-  });
-}
-
-v8::Handle<v8::Value> fromBytesPacked(const v8::Arguments& args) {
-  // fromBytesPacked(buffer, schema) -> reader
-  KJV8_UNWRAP(CapnpContext, context, args.Data());
-
-  v8::Handle<v8::Value> bufferHandle = args[0];
-  KJV8_UNWRAP_BUFFER(buffer, bufferHandle);
-
-  KJV8_UNWRAP(capnp::Schema, schema, args[1]);
-  if (!schema.getProto().isStruct()) {
-    KJV8_TYPE_ERROR(schema, capnp::StructSchema);
-    return emptyHandle;
-  }
-
-  return liftKj([&]() -> v8::Handle<v8::Value> {
-    kj::ArrayInputStream inputStream(kj::arrayPtr(buffer.begin(), buffer.size()));
-    auto wrapper = context.wrapper.wrap(new PackedStructReader(inputStream, schema.asStruct()));
     wrapper->SetHiddenValue(v8::String::NewSymbol("buffer"), bufferHandle);
     return wrapper;
   });
 }
 
 v8::Handle<v8::Value> toBytes(const v8::Arguments& args) {
-  // toBytes(builder) -> buffer
+  // toBytes(builder, options) -> buffer
 
   KJV8_UNWRAP(StructBuilder, builder, args[0]);
+  if (!args[1]->IsObject()) {
+    KJV8_TYPE_ERROR(obj, v8::Object);
+  }
 
   return liftKj([&]() -> v8::Handle<v8::Value> {
-    return wrapBuffer(capnp::messageToFlatArray(builder.message));
-  });
-}
+    auto options = args[1].As<v8::Object>();
+    bool packed = options->Get(v8::String::NewSymbol("packed"))->BooleanValue();
+    bool flat = options->Get(v8::String::NewSymbol("flat"))->BooleanValue();
 
-v8::Handle<v8::Value> toBytesPacked(const v8::Arguments& args) {
-  // toBytes(builder) -> buffer
+    if (flat) {
+      // Write whole message to flat array.
+      auto root = builder.root.asReader();
+      auto words = kj::heapArray<capnp::word>(root.totalSize().wordCount + 1);
+      memset(words.asBytes().begin(), 0, words.asBytes().size());
+      capnp::copyToUnchecked(root, words);
 
-  KJV8_UNWRAP(StructBuilder, builder, args[0]);
-
-  return liftKj([&]() -> v8::Handle<v8::Value> {
-    auto unpackedSize = computeSerializedSizeInWords(builder.message) * sizeof(capnp::word);
-    // Packed encoding can add 2 bytes of overhead per 2k segment reached.
-    auto packedOverhead = ((unpackedSize + 2047) / 2048) * 2;
-    auto packedSizeUpperBound = unpackedSize + packedOverhead;
-    auto oversizedBuf = kj::heapArray<byte>(packedSizeUpperBound);
-    kj::ArrayOutputStream outputStream(oversizedBuf);
-    capnp::writePackedMessage(outputStream, builder.message);
-    auto packedMessage = heapArray(outputStream.getArray());
-    return wrapBuffer(kj::mv(packedMessage));
+      if (packed) {
+        kj::VectorOutputStream output;
+        capnp::_::PackedOutputStream packer(output);
+        packer.write(words.asBytes().begin(), words.asBytes().size());
+        return wrapBuffer(kj::heapArray(output.getArray()));
+      } else {
+        return wrapBuffer(kj::mv(words));
+      }
+    } else if (packed) {
+      kj::VectorOutputStream output;
+      capnp::writePackedMessage(output, builder.message);
+      auto packedMessage = heapArray(output.getArray());
+      return wrapBuffer(kj::mv(packedMessage));
+    } else {
+      return wrapBuffer(capnp::messageToFlatArray(builder.message));
+    }
   });
 }
 
@@ -2444,9 +2478,7 @@ void init(v8::Handle<v8::Object> exports) {
     mapFunction("toJs", toJs);
     mapFunction("toJsParams", toJsParams);
     mapFunction("fromBytes", fromBytes);
-    mapFunction("fromBytesPacked", fromBytesPacked);
     mapFunction("toBytes", toBytes);
-    mapFunction("toBytesPacked", toBytesPacked);
     mapFunction("connect", connect);
     mapFunction("disconnect", disconnect);
     mapFunction("restore", restore);
