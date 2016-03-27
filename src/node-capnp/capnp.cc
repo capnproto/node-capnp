@@ -804,6 +804,7 @@ v8::Local<v8::Value> toJsException(kj::Exception&& exception) {
 
 kj::Exception fromJsException(v8::Handle<v8::Value> exception) {
   kj::Exception::Type type = kj::Exception::Type::FAILED;
+  kj::String description;
 
   if (exception->IsObject()) {
     v8::HandleScope scope;
@@ -819,9 +820,16 @@ kj::Exception fromJsException(v8::Handle<v8::Value> exception) {
         type = kj::Exception::Type::UNIMPLEMENTED;
       }
     }
+
+    v8::Handle<v8::Value> stack = obj->Get(v8::String::NewSymbol("stack"));
+    if (!stack.IsEmpty() && !stack->IsUndefined()) {
+      description = toKjString(stack);
+    } else {
+      description = toKjString(exception);
+    }
   }
 
-  return kj::Exception(type, "(javascript)", 0, toKjString(exception));
+  return kj::Exception(type, "(javascript)", 0, kj::mv(description));
 }
 
 EmptyHandle throwTypeError(kj::StringPtr name, const std::type_info& type,
