@@ -257,33 +257,32 @@ exports.connect = function (addr, bootstrapCap) {
 
 exports.expectedSizeFromPrefix = v8capnp.expectedSizeFromPrefix;
 
-exports.parse = function (schema, buffer) {
-  var reader = v8capnp.fromBytes(buffer, schema);
+exports.parse = function (schema, buffer, options) {
+  var reader = v8capnp.fromBytes(buffer, schema, options || {});
   return v8capnp.toJs(reader, Capability);
 }
 
 exports.parsePacked = function (schema, buffer) {
-  var reader = v8capnp.fromBytesPacked(buffer, schema);
-  return v8capnp.toJs(reader, Capability);
+  // TODO(cleanup): Remove in favor of options.
+  return exports.parse(schema, buffer, {packed: true});
 }
 
-exports.serialize = function (schema, value) {
+exports.serialize = function (schema, value, options) {
   var builder = v8capnp.newBuilder(schema);
   v8capnp.fromJs(builder, value, LocalCapWrapper);
-  return v8capnp.toBytes(builder);
+  return v8capnp.toBytes(builder, options || {});
 }
 
 exports.serializePacked = function (schema, value) {
-  var builder = v8capnp.newBuilder(schema);
-  v8capnp.fromJs(builder, value, LocalCapWrapper);
-  return v8capnp.toBytesPacked(builder);
+  // TODO(cleanup): Remove in favor of options.
+  return exports.serialize(schema, value, {packed: true});
 }
 
 exports.Capability = Capability;
 
-exports.bytesToPreorder = function(schema, buf) {
+exports.bytesToPreorder = function(schema, buf, options) {
   // Parse, copy, serialize, to get a preorder traversal.
-  var reader = v8capnp.fromBytes(buf, schema);
+  var reader = v8capnp.fromBytes(buf, schema, options || {});
   var builder = v8capnp.copyBuilder(reader);
-  return v8capnp.toBytes(builder);
+  return v8capnp.toBytes(builder, options || {});
 }
