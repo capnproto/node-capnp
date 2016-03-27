@@ -27,14 +27,20 @@ var spawn = require("child_process").spawn;
 
 var goldenBinary;
 var goldenPackedBinary;
+var goldenFlatBinary;
+var goldenPackedFlatBinary;
 try {
   // Works in Ekam build.
   goldenBinary = fs.readFileSync("node-capnp/testdata/binary");
   goldenPackedBinary = fs.readFileSync("node-capnp/testdata/packedbinary");
+  goldenFlatBinary = fs.readFileSync("node-capnp/testdata/flat");
+  goldenPackedFlatBinary = fs.readFileSync("node-capnp/testdata/packedflat");
 } catch (ex) {
   // Works in npm build.
   goldenBinary = fs.readFileSync("src/node-capnp/testdata/binary");
   goldenPackedBinary = fs.readFileSync("src/node-capnp/testdata/packedbinary");
+  goldenFlatBinary = fs.readFileSync("src/node-capnp/testdata/flat");
+  goldenPackedFlatBinary = fs.readFileSync("src/node-capnp/testdata/packedflat");
 }
 
 var test = require("./test.capnp");
@@ -64,10 +70,22 @@ var roundTrippedPacked = capnp.serializePacked(test.TestAllTypes, parsedPacked);
 assert.equal(goldenPackedBinary.length, roundTrippedPacked.length, "Round trip changed size?");
 assert.equal(goldenPackedBinary.toString("base64"), roundTrippedPacked.toString("base64"), "Round trip lost data?");
 
+var parsedFlat = capnp.parse(test.TestAllTypes, goldenFlatBinary, {flat: true});
+var roundTrippedFlat = capnp.serialize(test.TestAllTypes, parsedFlat, {flat: true});
+assert.equal(goldenFlatBinary.length, roundTrippedFlat.length, "Round trip changed size?");
+assert.equal(goldenFlatBinary.toString("base64"), roundTrippedFlat.toString("base64"), "Round trip lost data?");
+
+var parsedPackedFlat = capnp.parse(test.TestAllTypes, goldenPackedFlatBinary, {packed: true, flat: true});
+var roundTrippedPackedFlat = capnp.serialize(test.TestAllTypes, parsedPackedFlat, {packed: true, flat: true});
+assert.equal(goldenPackedFlatBinary.length, roundTrippedPackedFlat.length, "Round trip changed size?");
+assert.equal(goldenPackedFlatBinary.toString("base64"), roundTrippedPackedFlat.toString("base64"), "Round trip lost data?");
+
 // TODO(someday): do a more thorough deep equality comparison of parsed and parsedPacked
 var keys = ["voidField", "boolField", "int8Field", "int16Field", "int32Field", "int64Field"];
 for (var key in keys) {
   assert.equal(parsed[key], parsedPacked[key]);
+  assert.equal(parsed[key], parsedFlat[key]);
+  assert.equal(parsed[key], parsedPackedFlat[key]);
 }
 
 // =======================================================================================
