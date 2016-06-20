@@ -2366,7 +2366,15 @@ void fulfillPromisedCap(const v8::FunctionCallbackInfo<v8::Value>& args) {
   KJV8_UNWRAP(capnp::DynamicCapability::Client, cap, args[1]);
 
   liftKj(args, [&]() -> void {
+    auto schema = cap.getSchema();
+
     fulfiller->fulfill(kj::mv(cap));
+
+    // Avoid segfault if capability is called again.
+    cap = capnp::Capability::Client(
+        capnp::newBrokenCap(KJ_EXCEPTION(DISCONNECTED,
+            "Capability was used to resolve a promise capability and so has been closed.")))
+        .castAs<capnp::DynamicCapability>(schema);
   });
 }
 
