@@ -853,7 +853,8 @@ public:
     obj->SetAlignedPointerInInternalField(0, const_cast<std::type_info*>(&typeid(T)));
     obj->SetAlignedPointerInInternalField(1, ptr);
     v8::Persistent<v8::Object>(v8::Isolate::GetCurrent(), obj)
-        .SetWeak(reinterpret_cast<void*>(ptr), deleteAttachment<T>);
+        .SetWeak(reinterpret_cast<void*>(ptr), deleteAttachment<T>,
+                 v8::WeakCallbackType::kParameter);
     return obj;
   }
 
@@ -896,7 +897,7 @@ private:
   std::unordered_map<std::type_index, OwnHandle<v8::FunctionTemplate>> templates;
 
   template <typename T>
-  static void deleteAttachment(const v8::WeakCallbackData<v8::Object, void>& data) {
+  static void deleteAttachment(const v8::WeakCallbackInfo<void>& data) {
     delete reinterpret_cast<T*>(data.GetParameter());
   }
 };
@@ -1808,7 +1809,7 @@ void fromBytes(const v8::FunctionCallbackInfo<v8::Value>& args) {
       if (reinterpret_cast<uintptr_t>(buffer.begin()) % sizeof(capnp::word) != 0) {
         // Array is not aligned.  We have to make a copy.  :(
         auto array = kj::heapArray<capnp::word>(buffer.size() / sizeof(capnp::word));
-        memcpy(array.begin(), buffer.begin(), buffer.size());
+        memcpy(array.begin(), buffer.begin(), array.asBytes().size());
         words = array;
         bufferHandle = context.wrapper.wrapCopy(kj::mv(array));
       } else {
