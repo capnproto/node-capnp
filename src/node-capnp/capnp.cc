@@ -905,7 +905,7 @@ private:
 #define KJV8_UNWRAP(type, name, exp) \
   auto name##_maybe = Wrapper::tryUnwrap<type>(exp); \
   if (name##_maybe == nullptr) KJV8_TYPE_ERROR(name, type); \
-  type& name = KJ_ASSERT_NONNULL(name##_maybe)
+  type& name KJ_UNUSED = KJ_ASSERT_NONNULL(name##_maybe)
 
 kj::Maybe<kj::ArrayPtr<const byte>> unwrapBuffer(v8::Handle<v8::Value> value) {
   if (!node::Buffer::HasInstance(value)) {
