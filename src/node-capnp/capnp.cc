@@ -830,28 +830,10 @@ class Wrapper {
   // type-checked unwrapping.
 
 public:
-  Wrapper() {
-    v8::HandleScope scope(v8::Isolate::GetCurrent());
-  }
-
   template <typename T>
   v8::Local<v8::Object> wrap(T* ptr) {
-    const std::type_info& type = typeid(T);
-    auto& slot = templates[std::type_index(type)];
-    if (slot == nullptr) {
-      slot = v8::FunctionTemplate::New(v8::Isolate::GetCurrent());
-      slot->InstanceTemplate()->SetInternalFieldCount(2);
-
-      // TODO(someday):  Make stuff work with -fno-rtti?  node itself is compiled without RTTI...
-      int status;
-      char* buf = abi::__cxa_demangle(type.name(), nullptr, nullptr, &status);
-      slot->SetClassName(newString(buf == nullptr ? type.name() : buf));
-      free(buf);
-    }
-
-    v8::Local<v8::Object> obj = slot->GetFunction()->NewInstance();
-    obj->SetAlignedPointerInInternalField(0, const_cast<std::type_info*>(&typeid(T)));
-    obj->SetAlignedPointerInInternalField(1, ptr);
+    v8::Local<v8::Object> obj = getFunctionTemplate<T>()->GetFunction()->NewInstance();
+    obj->SetAlignedPointerInInternalField(0, ptr);
     v8::Persistent<v8::Object>(v8::Isolate::GetCurrent(), obj)
         .SetWeak(reinterpret_cast<void*>(ptr), deleteAttachment<T>,
                  v8::WeakCallbackType::kParameter);
@@ -868,17 +850,15 @@ public:
     if (!hdl->IsObject()) return nullptr;
 
     v8::Handle<v8::Object> obj(v8::Handle<v8::Object>::Cast(hdl));
-
-    if (obj->InternalFieldCount() != 2 ||
-        obj->GetAlignedPointerFromInternalField(0) != &typeid(T)) {
+    if (getFunctionTemplate<T>()->HasInstance(obj)) {
+      return *reinterpret_cast<T*>(obj->GetAlignedPointerFromInternalField(0));
+    } else {
       v8::Handle<v8::Value> native = obj->GetHiddenValue(newSymbol("capnp::native"));
       if (native.IsEmpty() || native->IsUndefined()) {
         return nullptr;
       } else {
         return tryUnwrap<T>(native);
       }
-    } else {
-      return *reinterpret_cast<T*>(obj->GetAlignedPointerFromInternalField(1));
     }
   }
 
@@ -894,11 +874,36 @@ public:
   }
 
 private:
-  std::unordered_map<std::type_index, OwnHandle<v8::FunctionTemplate>> templates;
-
   template <typename T>
   static void deleteAttachment(const v8::WeakCallbackInfo<void>& data) {
     delete reinterpret_cast<T*>(data.GetParameter());
+  }
+
+  template <typename T>
+  static v8::Handle<v8::FunctionTemplate> getFunctionTemplate() {
+    // Get the singleton FunctionTemplate for some wrapped type T.
+
+    // We allocate on the heap in order to prevent the destructor from running on shutdown, when
+    // it will otherwise segfault.
+    static OwnHandle<v8::FunctionTemplate>* tpl =
+        new OwnHandle<v8::FunctionTemplate>(newFunctionTemplate<T>());
+
+    return tpl->get();
+  }
+
+  template <typename T>
+  static v8::Handle<v8::FunctionTemplate> newFunctionTemplate() {
+    const std::type_info& type = typeid(T);
+    v8::Handle<v8::FunctionTemplate> result = v8::FunctionTemplate::New(v8::Isolate::GetCurrent());
+    result->InstanceTemplate()->SetInternalFieldCount(1);
+
+    // TODO(someday):  Make stuff work with -fno-rtti?  node itself is compiled without RTTI...
+    int status;
+    char* buf = abi::__cxa_demangle(type.name(), nullptr, nullptr, &status);
+    result->SetClassName(newString(buf == nullptr ? type.name() : buf));
+    free(buf);
+
+    return result;
   }
 };
 
