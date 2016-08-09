@@ -166,9 +166,13 @@ function makeMethod(cap, method) {
 
 function wrapLocalMethod(self, method) {
   return function (request) {
-    var params = v8capnp.toJsParams(request, Capability);
-    v8capnp.releaseParams(request);
-    Promise.resolve(method.apply(self, params)).then(function (results) {
+    // We start with Promise.resolve().then(...) so that any exceptions thrown immediately
+    // propagate through the promise chain.
+    Promise.resolve().then(function () {
+      var params = v8capnp.toJsParams(request, Capability);
+      v8capnp.releaseParams(request);
+      return method.apply(self, params);
+    }).then(function (results) {
       if (typeof results !== "object") {
         if (results === undefined) {
           results = [];

@@ -89,9 +89,12 @@ for (var key in keys) {
 
 // =======================================================================================
 
-/*
-// TODO(someday): Revive this test. The main problem is that it depends on calculator-server from
-//   the Cap'n Proto samples directory.
+console.log("serialization: pass");
+
+if (!fs.existsSync("capnp-samples")) {
+  console.warn("skipping RPC because capnp-samples not present");
+  process.exit(0);
+}
 
 var Fiber = require("fibers");
 
@@ -143,7 +146,7 @@ child.stdio[1].once("readable", function() {
   doFiber(function() {
     var conn = capnp.connect("127.0.0.1:21311");
     var Calculator = capnp.import("capnp-samples/calculator.capnp").Calculator;
-    var calc = conn.restore("calculator", Calculator);
+    var calc = conn.restore(null, Calculator);
 
     var add = calc.getOperator("add").func;
     var subtract = calc.getOperator("subtract").func;
@@ -177,7 +180,10 @@ child.stdio[1].once("readable", function() {
     value = calc.evaluate(
         {call: {"function": pow, params: [{literal: 2}, {literal: 4}]}}).value;
     assert.equal(16, wait(value.read()).value);
-    assert(pow.closed);  // Not kept past return.
+
+    // Wait a moment to give the capability a chance to be dropped.
+    wait(new Promise((resolve, reject) => setTimeout(resolve, 10)));
+    assert(pow.closed);
     value.close();
 
     // Try wrapping a promise as a capability -- calls are queued until resolution.
@@ -210,12 +216,9 @@ child.stdio[1].once("readable", function() {
 
     add.close();
     subtract.close();
+    calc.close();
     conn.close();
 
     console.log("rpc: pass");
   }, child);
 });
-*/
-
-console.log("pass");
-

@@ -2198,23 +2198,15 @@ void send(const v8::FunctionCallbackInfo<v8::Value>& args) {
       };
       // TODO(cleanup):  Call() demands an Object parameter but `undefined` is not an object.  So
       //   we pass an empty object.  Can we do better?
-      v8::TryCatch tryCatch;
-      callback->Call(v8::Object::New(v8::Isolate::GetCurrent()), 1, args).IsEmpty();
-      if (tryCatch.HasCaught()) {
-        KJV8_STACK_STR(message, tryCatch.StackTrace(), 512);
-        KJ_LOG(ERROR, "Uncaught v8 exception in Cap'n Proto callback.", message);
-      }
+      node::MakeCallback(scope.GetIsolate(), v8::Object::New(scope.GetIsolate()),
+                         callback.get(), 1, args);
     })).detach(kj::mvCapture(errorCallback,
           [&context](OwnHandle<v8::Function>&& errorCallback,
                      kj::Exception&& exception) {
       v8::HandleScope scope(v8::Isolate::GetCurrent());
       v8::Handle<v8::Value> args[1] = { toJsException(kj::mv(exception)) };
-      v8::TryCatch tryCatch;
-      errorCallback->Call(v8::Object::New(v8::Isolate::GetCurrent()), 1, args);
-      if (tryCatch.HasCaught()) {
-        KJV8_STACK_STR(message, tryCatch.StackTrace(), 512);
-        KJ_LOG(ERROR, "Uncaught v8 exception in Cap'n Proto callback.", message);
-      }
+      node::MakeCallback(scope.GetIsolate(), v8::Object::New(scope.GetIsolate()),
+                         errorCallback.get(), 1, args);
     }));
 
     pipelineToJs(context, kj::mv(promise), result, args[3]);
@@ -2254,13 +2246,8 @@ public:
 
     auto jsMethod = object->Get(newSymbol("close"));
     if (jsMethod->IsFunction()) {
-      auto func = v8::Function::Cast(*jsMethod);
-      v8::TryCatch tryCatch;
-      func->Call(object.get(), 0, nullptr);
-      if (tryCatch.HasCaught()) {
-        KJ_LOG(ERROR, "Uncaught exception in capability close() method.",
-            fromJsException(tryCatch.Exception()));
-      }
+      auto func = v8::Handle<v8::Function>::Cast(jsMethod);
+      node::MakeCallback(scope.GetIsolate(), object.get(), func, 0, nullptr);
     }
   }
 
@@ -2275,7 +2262,7 @@ public:
       KJ_FAIL_ASSERT("Method not implemented.", name) { break; }
       return kj::READY_NOW;
     }
-    auto func = v8::Function::Cast(*jsMethod);
+    auto func = v8::Handle<v8::Function>::Cast(jsMethod);
 
     auto paf = kj::newPromiseAndFulfiller<void>();
 
@@ -2285,13 +2272,8 @@ public:
     request.params = context.getParams();
 
     v8::Handle<v8::Value> arg = capnpContext.wrapper.wrapCopy(kj::mv(request));
-    v8::TryCatch tryCatch;
-    func->Call(object.get(), 1, &arg);
-    if (tryCatch.HasCaught()) {
-      return fromJsException(tryCatch.Exception());
-    } else {
-      return kj::mv(paf.promise);
-    }
+    node::MakeCallback(scope.GetIsolate(), object.get(), func, 1, &arg);
+    return kj::mv(paf.promise);
   }
 
 private:
