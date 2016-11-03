@@ -290,3 +290,5 @@ exports.bytesToPreorder = function(schema, buf, options) {
   var builder = v8capnp.copyBuilder(reader);
   return v8capnp.toBytes(builder, options || {});
 }
+
+exports.dumpLocalCapTypeCounts = v8capnp.dumpLocalCapTypeCounts;
