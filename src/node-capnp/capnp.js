@@ -99,7 +99,7 @@ function closeAll(obj) {
     var member = obj[name];
     if (member instanceof Capability) {
       member.close();
-    } else {
+    } else if (typeof member === "object") {
       closeAll(member);
     }
   }
