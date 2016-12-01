@@ -584,7 +584,26 @@ public:
   kj::Own<kj::AsyncIoStream> wrapSocketFd(int fd, uint flags = 0) override {
     return kj::heap<UvIoStream>(eventPort.getUvLoop(), fd, flags);
   }
-  kj::Promise<kj::Own<kj::AsyncIoStream>> wrapConnectingSocketFd(int fd, uint flags = 0) override {
+  kj::Promise<kj::Own<kj::AsyncIoStream>> wrapConnectingSocketFd(
+      int fd, const struct sockaddr* addr, uint addrlen, uint flags = 0) override {
+    // Unfortunately connect() doesn't fit the mold of KJ_NONBLOCKING_SYSCALL, since it indicates
+    // non-blocking using EINPROGRESS.
+    for (;;) {
+      if (::connect(fd, addr, addrlen) < 0) {
+        int error = errno;
+        if (error == EINPROGRESS) {
+          // Fine.
+          break;
+        } else if (error != EINTR) {
+          KJ_FAIL_SYSCALL("connect()", error) { break; }
+          return kj::Own<kj::AsyncIoStream>();
+        }
+      } else {
+        // no error
+        break;
+      }
+    }
+
     auto result = kj::heap<UvIoStream>(eventPort.getUvLoop(), fd, flags);
     auto connected = result->onWritable();
     return connected.then(kj::mvCapture(result,
