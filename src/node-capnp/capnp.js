@@ -291,4 +291,6 @@ exports.bytesToPreorder = function(schema, buf, options) {
   return v8capnp.toBytes(builder, options || {});
 }
 
+exports.matchPowerboxQuery = v8capnp.matchPowerboxQuery;
+
 exports.dumpLocalCapTypeCounts = v8capnp.dumpLocalCapTypeCounts;

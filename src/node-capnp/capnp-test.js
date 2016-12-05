@@ -87,9 +87,83 @@ for (var key in keys) {
   assert.equal(parsed[key], parsedPackedFlat[key]);
 }
 
-// =======================================================================================
-
 console.log("serialization: pass");
+
+// =======================================================================================
+// Test matchPowerboxQuery
+
+var tag1 = capnp.serialize(test.TestAllTypes, {int32Field: 123});
+var tag2 = capnp.serialize(test.TestAllTypes, {int32Field: 321});
+var tag3 = capnp.serialize(test.TestAllTypes, {});
+
+assert(capnp.matchPowerboxQuery(tag1, tag1));
+assert(capnp.matchPowerboxQuery(tag2, tag2));
+assert(capnp.matchPowerboxQuery(tag3, tag3));
+
+assert(!capnp.matchPowerboxQuery(tag1, tag2));
+assert(!capnp.matchPowerboxQuery(tag2, tag3));
+assert(!capnp.matchPowerboxQuery(tag3, tag1));
+
+var emptyTag = capnp.serialize(test.TestEmptyStruct, {});
+assert(!capnp.matchPowerboxQuery(emptyTag, tag1));
+assert(!capnp.matchPowerboxQuery(emptyTag, tag2));
+assert(capnp.matchPowerboxQuery(emptyTag, tag3));
+assert(!capnp.matchPowerboxQuery(tag1, emptyTag));
+assert(!capnp.matchPowerboxQuery(tag2, emptyTag));
+assert(capnp.matchPowerboxQuery(tag3, emptyTag));
+
+var tagStr1 = capnp.serialize(test.TestAllTypes, {textField: "foo"});
+var tagStr2 = capnp.serialize(test.TestAllTypes, {textField: "bar"});
+var tagStr3 = capnp.serialize(test.TestAllTypes, {textField: ""});
+assert(capnp.matchPowerboxQuery(tagStr1, tagStr1));
+assert(capnp.matchPowerboxQuery(tagStr2, tagStr2));
+assert(capnp.matchPowerboxQuery(tagStr3, tagStr3));
+assert(!capnp.matchPowerboxQuery(tagStr1, tagStr2));
+assert(!capnp.matchPowerboxQuery(tagStr2, tagStr3));
+assert(!capnp.matchPowerboxQuery(tagStr3, tagStr1));
+assert(capnp.matchPowerboxQuery(tagStr1, emptyTag));
+assert(capnp.matchPowerboxQuery(tagStr2, emptyTag));
+assert(capnp.matchPowerboxQuery(tagStr3, emptyTag));
+assert(capnp.matchPowerboxQuery(emptyTag, tagStr1));
+assert(capnp.matchPowerboxQuery(emptyTag, tagStr2));
+assert(capnp.matchPowerboxQuery(emptyTag, tagStr3));
+
+var tagStr3 = capnp.serialize(test.TestAllTypes, {textField: "oof"});
+assert(!capnp.matchPowerboxQuery(tagStr1, tagStr3));
+
+var tagFooBar = capnp.serialize(test.TestAllTypes,
+    {structList: [{textField: "foo"}, {textField: "bar"}]});
+var tagFooOnly = capnp.serialize(test.TestAllTypes,
+    {structList: [{textField: "foo"}]});
+var tagBarOnly = capnp.serialize(test.TestAllTypes,
+    {structList: [{textField: "bar"}]});
+var tagEmptyList = capnp.serialize(test.TestAllTypes,
+    {structList: []});
+
+assert(capnp.matchPowerboxQuery(tagFooBar, tagFooBar));
+assert(capnp.matchPowerboxQuery(tagFooOnly, tagFooBar));
+assert(capnp.matchPowerboxQuery(tagBarOnly, tagFooBar));
+assert(!capnp.matchPowerboxQuery(tagFooBar, tagFooOnly));
+assert(!capnp.matchPowerboxQuery(tagFooBar, tagBarOnly));
+
+assert(capnp.matchPowerboxQuery(tagFooBar, emptyTag));
+assert(capnp.matchPowerboxQuery(tagFooOnly, emptyTag));
+assert(capnp.matchPowerboxQuery(tagBarOnly, emptyTag));
+assert(capnp.matchPowerboxQuery(emptyTag, tagFooBar));
+assert(capnp.matchPowerboxQuery(emptyTag, tagFooOnly));
+assert(capnp.matchPowerboxQuery(emptyTag, tagBarOnly));
+
+assert(!capnp.matchPowerboxQuery(tagFooBar, tagEmptyList));
+assert(!capnp.matchPowerboxQuery(tagFooOnly, tagEmptyList));
+assert(!capnp.matchPowerboxQuery(tagBarOnly, tagEmptyList));
+assert(capnp.matchPowerboxQuery(tagEmptyList, tagFooBar));
+assert(capnp.matchPowerboxQuery(tagEmptyList, tagFooOnly));
+assert(capnp.matchPowerboxQuery(tagEmptyList, tagBarOnly));
+
+console.log("matchPowerboxQuery: pass");
+
+// =======================================================================================
+// Test RPC, if possible.
 
 if (!fs.existsSync("capnp-samples")) {
   console.warn("skipping RPC because capnp-samples not present");
