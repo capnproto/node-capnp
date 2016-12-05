@@ -112,6 +112,7 @@ assert(!capnp.matchPowerboxQuery(tag1, emptyTag));
 assert(!capnp.matchPowerboxQuery(tag2, emptyTag));
 assert(capnp.matchPowerboxQuery(tag3, emptyTag));
 
+// Test comparing pointers.
 var tagStr1 = capnp.serialize(test.TestAllTypes, {textField: "foo"});
 var tagStr2 = capnp.serialize(test.TestAllTypes, {textField: "bar"});
 var tagStr3 = capnp.serialize(test.TestAllTypes, {textField: ""});
@@ -128,11 +129,16 @@ assert(capnp.matchPowerboxQuery(emptyTag, tagStr1));
 assert(capnp.matchPowerboxQuery(emptyTag, tagStr2));
 assert(capnp.matchPowerboxQuery(emptyTag, tagStr3));
 
-var tagStr3 = capnp.serialize(test.TestAllTypes, {textField: "oof"});
-assert(!capnp.matchPowerboxQuery(tagStr1, tagStr3));
+// Note that string comparisons are actually list comparisons. But let's make sure an exact match
+// is required (which is not the case for list-of-structs).
+var tagStr4 = capnp.serialize(test.TestAllTypes, {textField: "oof"});
+assert(!capnp.matchPowerboxQuery(tagStr1, tagStr4));
 
+// Test list-of-structs.
 var tagFooBar = capnp.serialize(test.TestAllTypes,
     {structList: [{textField: "foo"}, {textField: "bar"}]});
+var tagBarFoo = capnp.serialize(test.TestAllTypes,
+    {structList: [{textField: "bar"}, {textField: "foo"}]});
 var tagFooOnly = capnp.serialize(test.TestAllTypes,
     {structList: [{textField: "foo"}]});
 var tagBarOnly = capnp.serialize(test.TestAllTypes,
@@ -141,10 +147,16 @@ var tagEmptyList = capnp.serialize(test.TestAllTypes,
     {structList: []});
 
 assert(capnp.matchPowerboxQuery(tagFooBar, tagFooBar));
+assert(capnp.matchPowerboxQuery(tagFooBar, tagBarFoo));
+assert(capnp.matchPowerboxQuery(tagBarFoo, tagFooBar));
 assert(capnp.matchPowerboxQuery(tagFooOnly, tagFooBar));
 assert(capnp.matchPowerboxQuery(tagBarOnly, tagFooBar));
+assert(capnp.matchPowerboxQuery(tagFooOnly, tagBarFoo));
+assert(capnp.matchPowerboxQuery(tagBarOnly, tagBarFoo));
 assert(!capnp.matchPowerboxQuery(tagFooBar, tagFooOnly));
 assert(!capnp.matchPowerboxQuery(tagFooBar, tagBarOnly));
+assert(!capnp.matchPowerboxQuery(tagBarFoo, tagFooOnly));
+assert(!capnp.matchPowerboxQuery(tagBarFoo, tagBarOnly));
 
 assert(capnp.matchPowerboxQuery(tagFooBar, emptyTag));
 assert(capnp.matchPowerboxQuery(tagFooOnly, emptyTag));
@@ -159,6 +171,19 @@ assert(!capnp.matchPowerboxQuery(tagBarOnly, tagEmptyList));
 assert(capnp.matchPowerboxQuery(tagEmptyList, tagFooBar));
 assert(capnp.matchPowerboxQuery(tagEmptyList, tagFooOnly));
 assert(capnp.matchPowerboxQuery(tagEmptyList, tagBarOnly));
+
+// Test list-of-pointers.
+var tagStrList1 = capnp.serialize(test.TestAllTypes, {textList: ["foo", "bar"]});
+var tagStrList2 = capnp.serialize(test.TestAllTypes, {textList: ["bar", "foo"]});
+var tagStrList3 = capnp.serialize(test.TestAllTypes, {textList: ["foo"]});
+var tagStrList4 = capnp.serialize(test.TestAllTypes, {textList: ["foo", null]});
+
+assert(capnp.matchPowerboxQuery(tagStrList1, tagStrList1));
+assert(capnp.matchPowerboxQuery(tagStrList2, tagStrList2));
+assert(!capnp.matchPowerboxQuery(tagStrList1, tagStrList2));
+assert(!capnp.matchPowerboxQuery(tagStrList2, tagStrList1));
+assert(!capnp.matchPowerboxQuery(tagStrList3, tagStrList1));
+assert(capnp.matchPowerboxQuery(tagStrList4, tagStrList1));
 
 console.log("matchPowerboxQuery: pass");
 
