@@ -1368,12 +1368,19 @@ struct FromJsConverter {
             }
             if (error) break;
           } else {
+            bool isPointerList = builder.as<capnp::AnyList>().getElementSize() ==
+                                 capnp::ElementSize::POINTER;
             for (uint i: kj::indices(builder)) {
-              auto element = orphanFromJs(field, orphanage, elementType, jsArray->Get(i));
-              if (element.getType() == capnp::DynamicValue::UNKNOWN) {
-                return nullptr;
+              auto jsElement = jsArray->Get(i);
+              if (isPointerList && (jsElement->IsNull() || jsElement->IsUndefined())) {
+                // Skip null element.
+              } else {
+                auto element = orphanFromJs(field, orphanage, elementType, jsElement);
+                if (element.getType() == capnp::DynamicValue::UNKNOWN) {
+                  return nullptr;
+                }
+                builder.adopt(i, kj::mv(element));
               }
-              builder.adopt(i, kj::mv(element));
             }
           }
           return kj::mv(orphan);
@@ -2664,7 +2671,8 @@ void matchPowerboxQuery(const v8::FunctionCallbackInfo<v8::Value>& args) {
   // "matches" the candidate according to Sandstorm's powerbox query tag matching algorithm. See
   // PowerboxDescriptor::Tag::value in sandstorm/powerbox.capnp for full details of the algorithm.
   // The idea here is that the two parameters are AnyPointer values from Tag::value, which in
-  // node-capnp are normally represented as byte arrays.
+  // node-capnp are normally represented as byte arrays. Note that the order of the parameters
+  // is important, particularly in the case of struct list matching.
 
   KJV8_UNWRAP(CapnpContext, context, args.Data());
   KJV8_UNWRAP_BUFFER(queryBuffer, args[0]);
