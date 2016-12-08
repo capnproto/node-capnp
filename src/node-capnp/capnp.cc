@@ -1368,12 +1368,19 @@ struct FromJsConverter {
             }
             if (error) break;
           } else {
+            bool isPointerList = builder.as<capnp::AnyList>().getElementSize() ==
+                                 capnp::ElementSize::POINTER;
             for (uint i: kj::indices(builder)) {
-              auto element = orphanFromJs(field, orphanage, elementType, jsArray->Get(i));
-              if (element.getType() == capnp::DynamicValue::UNKNOWN) {
-                return nullptr;
+              auto jsElement = jsArray->Get(i);
+              if (isPointerList && (jsElement->IsNull() || jsElement->IsUndefined())) {
+                // Skip null element.
+              } else {
+                auto element = orphanFromJs(field, orphanage, elementType, jsElement);
+                if (element.getType() == capnp::DynamicValue::UNKNOWN) {
+                  return nullptr;
+                }
+                builder.adopt(i, kj::mv(element));
               }
-              builder.adopt(i, kj::mv(element));
             }
           }
           return kj::mv(orphan);
@@ -2521,6 +2528,174 @@ void throw_(const v8::FunctionCallbackInfo<v8::Value>& args) {
 
 // -----------------------------------------------------------------------------
 
+class AlignedWords {
+public:
+  AlignedWords(kj::ArrayPtr<const kj::byte> bytes) {
+    if (reinterpret_cast<uintptr_t>(bytes.begin()) % sizeof(capnp::word) != 0) {
+      // Array is not aligned.  We have to make a copy.  :(
+      copy = kj::heapArray<capnp::word>(bytes.size() / sizeof(capnp::word));
+      memcpy(copy.begin(), bytes.begin(), copy.asBytes().size());
+      words = copy;
+    } else {
+      // Yay, array is aligned.
+      words = kj::arrayPtr(reinterpret_cast<const capnp::word*>(bytes.begin()),
+                           bytes.size() / sizeof(capnp::word));
+    }
+  }
+
+  inline const kj::ArrayPtr<const capnp::word>* operator->() const { return &words; }
+  inline const kj::ArrayPtr<const capnp::word>& operator*() const { return words; }
+
+private:
+  kj::ArrayPtr<const capnp::word> words;
+  kj::Array<capnp::word> copy;
+};
+
+bool matchPowerboxQuery(capnp::AnyPointer::Reader query, capnp::AnyPointer::Reader candidate);
+
+bool matchPowerboxQuery(capnp::AnyStruct::Reader query, capnp::AnyStruct::Reader candidate) {
+  {
+    // Compare data.
+    auto queryData = query.getDataSection();
+    auto candidateData = candidate.getDataSection();
+
+    auto commonSize = kj::min(queryData.size(), candidateData.size());
+    if (memcmp(queryData.begin(), candidateData.begin(), commonSize) != 0) {
+      // Data sections don't match.
+      return false;
+    }
+
+    // Non-matched parts of data sections must be all-zero.
+    kj::byte accum = 0;
+    for (kj::byte b: queryData.slice(commonSize, queryData.size())) {
+      accum |= b;
+    }
+    for (kj::byte b: candidateData.slice(commonSize, candidateData.size())) {
+      accum |= b;
+    }
+    if (accum != 0) return false;
+  }
+
+  {
+    // Compare pointers.
+    auto queryPointers = query.getPointerSection();
+    auto candidatePointers = candidate.getPointerSection();
+
+    auto commonSize = kj::min(queryPointers.size(), candidatePointers.size());
+    for (auto i: kj::range<decltype(commonSize)>(0, commonSize)) {
+      if (!matchPowerboxQuery(queryPointers[i], candidatePointers[i])) {
+        return false;
+      }
+    }
+
+    // No need to compare the non-overlapping range since null pointers match anything.
+  }
+
+  return true;
+}
+
+bool matchPowerboxQuery(capnp::AnyList::Reader query, capnp::AnyList::Reader candidate) {
+  auto elementSize = query.getElementSize();
+  if (candidate.getElementSize() != elementSize) return false;
+
+  switch (elementSize) {
+    case capnp::ElementSize::VOID:
+    case capnp::ElementSize::BIT:
+    case capnp::ElementSize::BYTE:
+    case capnp::ElementSize::TWO_BYTES:
+    case capnp::ElementSize::FOUR_BYTES:
+    case capnp::ElementSize::EIGHT_BYTES:
+      return query == candidate;
+
+    case capnp::ElementSize::POINTER: {
+      auto queryPtrs = query.as<capnp::List<capnp::AnyPointer>>();
+      auto candidatePtrs = candidate.as<capnp::List<capnp::AnyPointer>>();
+
+      if (queryPtrs.size() != candidatePtrs.size()) return false;
+      for (auto i: kj::indices(queryPtrs)) {
+        if (!matchPowerboxQuery(queryPtrs[i], candidatePtrs[i])) return false;
+      }
+      return true;
+    }
+
+    case capnp::ElementSize::INLINE_COMPOSITE: {
+      // Every element in the query must be matched by at least one element in the candidate.
+      //
+      // TODO(perf): O(m*n), can we do better?
+
+      auto candidateStructs = candidate.as<capnp::List<capnp::AnyStruct>>();
+      for (auto queryElement: query.as<capnp::List<capnp::AnyStruct>>()) {
+        bool matched = false;
+        for (auto candidateElement: candidateStructs) {
+          if (matchPowerboxQuery(queryElement, candidateElement)) {
+            matched = true;
+            break;
+          }
+        }
+        if (!matched) return false;
+      }
+      return true;
+    }
+  }
+}
+
+bool matchPowerboxQuery(capnp::AnyPointer::Reader query, capnp::AnyPointer::Reader candidate) {
+  auto queryType = query.getPointerType();
+  auto candidateType = candidate.getPointerType();
+
+  if (queryType != candidateType) {
+    // Different types -> no match, unless one is null, which is a wildcard.
+    return queryType == capnp::PointerType::NULL_ ||
+           candidateType == capnp::PointerType::NULL_;
+  }
+
+  switch (queryType) {
+    case capnp::PointerType::NULL_:
+      return true;
+    case capnp::PointerType::STRUCT:
+      return matchPowerboxQuery(query.getAs<capnp::AnyStruct>(),
+                                candidate.getAs<capnp::AnyStruct>());
+    case capnp::PointerType::LIST:
+      return matchPowerboxQuery(query.getAs<capnp::AnyList>(),
+                                candidate.getAs<capnp::AnyList>());
+    case capnp::PointerType::CAPABILITY:
+      // TODO(someday): Support matching capabilities?
+      return false;
+  }
+}
+
+void matchPowerboxQuery(const v8::FunctionCallbackInfo<v8::Value>& args) {
+  // matchPowerboxQuery(queryBuffer, candidateBuffer) -> bool
+  //
+  // Decodes queryBuffer and candidateBuffer as capnp messages and returns true if the query
+  // "matches" the candidate according to Sandstorm's powerbox query tag matching algorithm. See
+  // PowerboxDescriptor::Tag::value in sandstorm/powerbox.capnp for full details of the algorithm.
+  // The idea here is that the two parameters are AnyPointer values from Tag::value, which in
+  // node-capnp are normally represented as byte arrays. Note that the order of the parameters
+  // is important, particularly in the case of struct list matching.
+
+  KJV8_UNWRAP(CapnpContext, context, args.Data());
+  KJV8_UNWRAP_BUFFER(queryBuffer, args[0]);
+  KJV8_UNWRAP_BUFFER(candidateBuffer, args[1]);
+
+  liftKj(args, [&]() -> v8::Handle<v8::Value> {
+    AlignedWords queryWords(queryBuffer);
+    AlignedWords candidateWords(candidateBuffer);
+
+    capnp::FlatArrayMessageReader queryReader(*queryWords);
+    capnp::FlatArrayMessageReader candidateReader(*candidateWords);
+
+    auto queryRoot = queryReader.getRoot<capnp::AnyPointer>();
+    auto candidateRoot = candidateReader.getRoot<capnp::AnyPointer>();
+
+    bool result = matchPowerboxQuery(queryRoot, candidateRoot);
+
+    return v8::Boolean::New(args.GetIsolate(), result);
+  });
+}
+
+// -----------------------------------------------------------------------------
+
 void init(v8::Handle<v8::Object> exports) {
   CapnpContext* context = new CapnpContext;
   auto wrappedContext = context->wrapper.wrap(context);
@@ -2564,6 +2739,8 @@ void init(v8::Handle<v8::Object> exports) {
   mapFunction("getResults", getResults);
   mapFunction("return_", return_);
   mapFunction("throw_", throw_);
+
+  mapFunction("matchPowerboxQuery", matchPowerboxQuery);
 
   mapFunction("dumpLocalCapTypeCounts", dumpLocalCapTypeCounts);
 }
