@@ -152,8 +152,19 @@ function makeMethod(cap, method) {
     v8capnp.fromJs(req, Array.prototype.slice.call(arguments, 0), LocalCapWrapper);
     var pipeline;
     var promise = new Promise(function (resolve, reject) {
-      pipeline = v8capnp.send(req, resolve, reject, Capability);
-    }).then(function (response) {
+      // TODO(cleanup): HACK: The second parameter to send() should just be `resolve`, but for
+      //   some reason the value passed to `resolve()` does not get GC'd! Over time, we build up
+      //   ClientResponse objects, each of which adds a global weak handle do to the way we wrap
+      //   C++ objects in v8capnp. Each handle is a GC memory root, which eventually bogs
+      //   down V8's garbage collector, slowing the whole process until it can't keep up with
+      //   incoming requests, pegging the CPU. To avoid leaking ClientRequests we wrap the object
+      //   in a one-element array here, and we clear the array in the continuation callback below.
+      //   Presumably the array itself still isn't being GC'd, but at least this doesn't leave a
+      //   global handle around. Is this a Node bug?
+      pipeline = v8capnp.send(req, function (x) { resolve([x]); }, reject, Capability);
+    }).then(function (responseWrapper) {
+      var response = responseWrapper[0];
+      delete responseWrapper[0];
       var result = v8capnp.toJs(response, Capability);
       v8capnp.release(response);
       settleCaps(pipeline, result);
