@@ -302,6 +302,7 @@ exports.bytesToPreorder = function(schema, buf, options) {
   return v8capnp.toBytes(builder, options || {});
 }
 
-exports.matchPowerboxQuery = v8capnp.matchPowerboxQuery;
+if (v8capnp.matchPowerboxQuery) exports.matchPowerboxQuery = v8capnp.matchPowerboxQuery;
+if (v8capnp.chacha20) exports.chacha20 = v8capnp.chacha20;
 
 exports.dumpLocalCapTypeCounts = v8capnp.dumpLocalCapTypeCounts;

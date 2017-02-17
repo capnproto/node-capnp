@@ -53,6 +53,10 @@
 #include <typeindex>
 #include <cxxabi.h>
 
+#ifdef SANDSTORM_BUILD
+#include <sodium/crypto_stream_chacha20.h>
+#endif
+
 namespace v8capnp {
 namespace {  // so we get warnings if anything declared in this file is left undefined...
 
@@ -2528,6 +2532,8 @@ void throw_(const v8::FunctionCallbackInfo<v8::Value>& args) {
 
 // -----------------------------------------------------------------------------
 
+#ifdef SANDSTORM_BUILD
+
 class AlignedWords {
 public:
   AlignedWords(kj::ArrayPtr<const kj::byte> bytes) {
@@ -2694,6 +2700,32 @@ void matchPowerboxQuery(const v8::FunctionCallbackInfo<v8::Value>& args) {
   });
 }
 
+void chacha20(const v8::FunctionCallbackInfo<v8::Value>& args) {
+  KJV8_UNWRAP_BUFFER(message, args[0]);
+  KJV8_UNWRAP_BUFFER(nonce, args[1]);
+  KJV8_UNWRAP_BUFFER(key, args[2]);
+
+  liftKj(args, [&]() -> v8::Handle<v8::Value> {
+    KJ_REQUIRE(key.size() == crypto_stream_chacha20_KEYBYTES);
+    KJ_REQUIRE(nonce.size() == crypto_stream_chacha20_NONCEBYTES);
+
+    auto maybeOut = node::Buffer::New(v8::Isolate::GetCurrent(), message.size());
+    v8::Local<v8::Object> out;
+
+    if (!maybeOut.ToLocal(&out)) {
+      return emptyHandle;
+    }
+
+    auto outData = reinterpret_cast<byte*>(node::Buffer::Data(out));
+    KJ_ASSERT(crypto_stream_chacha20_xor(
+        outData, message.begin(), message.size(), nonce.begin(), key.begin()) == 0);
+
+    return out;
+  });
+}
+
+#endif // SANDSTORM_BUILD
+
 // -----------------------------------------------------------------------------
 
 void init(v8::Handle<v8::Object> exports) {
@@ -2740,7 +2772,10 @@ void init(v8::Handle<v8::Object> exports) {
   mapFunction("return_", return_);
   mapFunction("throw_", throw_);
 
+#ifdef SANDSTORM_BUILD
   mapFunction("matchPowerboxQuery", matchPowerboxQuery);
+  mapFunction("chacha20", chacha20);
+#endif
 
   mapFunction("dumpLocalCapTypeCounts", dumpLocalCapTypeCounts);
 }
