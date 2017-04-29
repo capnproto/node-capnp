@@ -682,18 +682,9 @@ public:
   KJ_DISALLOW_COPY(OwnHandle);
   inline OwnHandle(const v8::Handle<T>& other)
       : handle(v8::Isolate::GetCurrent(), other) {}
-  inline OwnHandle(OwnHandle&& other): handle(other.handle) {
-    other.handle.Empty();
-  }
-  inline ~OwnHandle() {
-    // No longer needed with new v8 API?
-  }
+  inline OwnHandle(OwnHandle&& other) = default;
 
-  inline OwnHandle& operator=(OwnHandle&& other) {
-    handle = other.handle;
-    other.handle.Empty();
-    return *this;
-  }
+  inline OwnHandle& operator=(OwnHandle&& other) = default;
   inline OwnHandle& operator=(const v8::Handle<T>& other) {
     handle.Reset(v8::Isolate::GetCurrent(), other);
     return *this;
@@ -708,7 +699,7 @@ public:
   }
 
 private:
-  v8::Persistent<T, v8::CopyablePersistentTraits<T>> handle;
+  v8::Global<T> handle;
 };
 
 kj::String toKjString(v8::Handle<v8::String> handle) {
@@ -853,14 +844,28 @@ class Wrapper {
   // Wraps C++ objects in v8 handles, assigning an appropriate type name and allowing for
   // type-checked unwrapping.
 
+  template <typename T>
+  struct WrappedObject {
+    v8::Global<v8::Object> handle;
+    T* ptr;
+
+    WrappedObject(v8::Local<v8::Object> obj, T* ptr)
+        : handle(v8::Isolate::GetCurrent(), obj),
+          ptr(ptr) {
+      handle.MarkIndependent();
+      handle.SetWeak(this, &deleteCallback, v8::WeakCallbackType::kParameter);
+    }
+
+    static void deleteCallback(const v8::WeakCallbackInfo<WrappedObject>& data) {
+      delete reinterpret_cast<WrappedObject*>(data.GetParameter());
+    }
+  };
+
 public:
   template <typename T>
   v8::Local<v8::Object> wrap(T* ptr) {
     v8::Local<v8::Object> obj = getFunctionTemplate<T>()->GetFunction()->NewInstance();
-    obj->SetAlignedPointerInInternalField(0, ptr);
-    v8::Persistent<v8::Object>(v8::Isolate::GetCurrent(), obj)
-        .SetWeak(reinterpret_cast<void*>(ptr), deleteAttachment<T>,
-                 v8::WeakCallbackType::kParameter);
+    obj->SetAlignedPointerInInternalField(0, new WrappedObject<T>(obj, ptr));
     return obj;
   }
 
@@ -875,7 +880,7 @@ public:
 
     v8::Handle<v8::Object> obj(v8::Handle<v8::Object>::Cast(hdl));
     if (getFunctionTemplate<T>()->HasInstance(obj)) {
-      return *reinterpret_cast<T*>(obj->GetAlignedPointerFromInternalField(0));
+      return *reinterpret_cast<WrappedObject<T>*>(obj->GetAlignedPointerFromInternalField(0))->ptr;
     } else {
       v8::Handle<v8::Value> native = obj->GetHiddenValue(newSymbol("capnp::native"));
       if (native.IsEmpty() || native->IsUndefined()) {
