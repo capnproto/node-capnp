@@ -1995,6 +1995,63 @@ void connect(const v8::FunctionCallbackInfo<v8::Value>& args) {
   });
 }
 
+void connectUnixFd(const v8::FunctionCallbackInfo<v8::Value>& args) {
+  // connectUnixFd(fd, bootstrap) -> connection
+  //
+  // Given the FD of a Unix domain socket, form a connection to the server at the other end by
+  // sending it an FD. Specifically, create a new socketpair, and send one end of the pair over
+  // the existing socket.
+
+  KJV8_UNWRAP(CapnpContext, context, args.Data());
+  int fd = args[0]->IntegerValue();
+
+  liftKj(args, [&]() -> v8::Handle<v8::Value> {
+    int fdPair[2];
+    KJ_SYSCALL(socketpair(AF_UNIX, SOCK_STREAM, 0, fdPair));
+    kj::AutoCloseFd clientEnd(fdPair[0]);
+    kj::AutoCloseFd serverEnd(fdPair[1]);
+
+    struct msghdr msg;
+    struct iovec iov;
+    union {
+      struct cmsghdr cmsg;
+      char cmsgSpace[CMSG_LEN(sizeof(int))];
+    };
+    memset(&msg, 0, sizeof(msg));
+    memset(&iov, 0, sizeof(iov));
+    memset(cmsgSpace, 0, sizeof(cmsgSpace));
+
+    char c = 0;
+    iov.iov_base = &c;
+    iov.iov_len = 1;
+    msg.msg_iov = &iov;
+    msg.msg_iovlen = 1;
+
+    msg.msg_control = &cmsg;
+    msg.msg_controllen = sizeof(cmsgSpace);
+
+    cmsg.cmsg_len = sizeof(cmsgSpace);
+    cmsg.cmsg_level = SOL_SOCKET;
+    cmsg.cmsg_type = SCM_RIGHTS;
+    *reinterpret_cast<int*>(CMSG_DATA(&cmsg)) = serverEnd;
+
+    // TODO(someday): This could fail with EAGAIN (or block, if the FD is not in non-blocking mode)
+    //   if somehow the client is forming connections faster than the server can accept them. For
+    //   now I don't care enough to handle this.
+    KJ_SYSCALL(sendmsg(fd, &msg, 0));
+    serverEnd = nullptr;
+
+    kj::Maybe<capnp::Capability::Client> bootstrap =
+        Wrapper::tryUnwrap<capnp::DynamicCapability::Client>(args[1]);
+
+    auto stream = context.llaiop.LowLevelAsyncIoProvider::wrapSocketFd(kj::mv(clientEnd));
+    kj::Promise<kj::Own<RpcConnection>> promise =
+        kj::refcounted<RpcConnection>(kj::mv(stream), bootstrap);
+
+    return context.wrapper.wrapCopy(ConnectionWrapper { promise.fork() });
+  });
+}
+
 void disconnect(const v8::FunctionCallbackInfo<v8::Value>& args) {
   // disconnect(connection)
   //
@@ -2766,6 +2823,7 @@ void init(v8::Handle<v8::Object> exports) {
   mapFunction("fromBytes", fromBytes);
   mapFunction("toBytes", toBytes);
   mapFunction("connect", connect);
+  mapFunction("connectUnixFd", connectUnixFd);
   mapFunction("disconnect", disconnect);
   mapFunction("restore", restore);
   mapFunction("castAs", castAs);

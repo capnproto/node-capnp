@@ -256,7 +256,12 @@ exports.connect = function (addr, bootstrapCap) {
   if (bootstrapCap && !v8capnp.isCap(bootstrapCap)) {
     throw new Error("Invalid bootstrap capability.");
   }
-  return new Connection(v8capnp.connect(addr, bootstrapCap));
+
+  if (addr.capabilityStreamFd) {
+    return new Connection(v8capnp.connectUnixFd(addr.capabilityStreamFd, bootstrapCap));
+  } else {
+    return new Connection(v8capnp.connect(addr, bootstrapCap));
+  }
 }
 
 exports.expectedSizeFromPrefix = v8capnp.expectedSizeFromPrefix;
