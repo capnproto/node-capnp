@@ -621,9 +621,19 @@ public:
           return kj::mv(stream);
         }));
   }
+
+#if CAPNP_VERSION < 7000
   kj::Own<kj::ConnectionReceiver> wrapListenSocketFd(int fd, uint flags = 0) override {
     return kj::heap<UvConnectionReceiver>(eventPort.getUvLoop(), fd, flags);
   }
+#else
+  kj::Own<kj::ConnectionReceiver> wrapListenSocketFd(int fd,
+      kj::LowLevelAsyncIoProvider::NetworkFilter& filter, uint flags = 0) override {
+    // TODO(soon): TODO(security): Actually use `filter`. Currently no API is exposed to set a
+    //   filter so it's not important yet.
+    return kj::heap<UvConnectionReceiver>(eventPort.getUvLoop(), fd, flags);
+  }
+#endif
 
   kj::Timer& getTimer() override {
     // TODO(soon):  Implement this.
