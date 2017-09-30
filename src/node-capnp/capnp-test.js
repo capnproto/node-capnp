@@ -92,6 +92,8 @@ console.log("serialization: pass");
 // =======================================================================================
 // Test matchPowerboxQuery
 
+if (capnp.matchPowerboxQuery) {
+
 var tag1 = capnp.serialize(test.TestAllTypes, {int32Field: 123});
 var tag2 = capnp.serialize(test.TestAllTypes, {int32Field: 321});
 var tag3 = capnp.serialize(test.TestAllTypes, {});
@@ -186,6 +188,8 @@ assert(!capnp.matchPowerboxQuery(tagStrList3, tagStrList1));
 assert(capnp.matchPowerboxQuery(tagStrList4, tagStrList1));
 
 console.log("matchPowerboxQuery: pass");
+
+}
 
 // =======================================================================================
 // Test RPC, if possible.

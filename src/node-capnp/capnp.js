@@ -40,7 +40,7 @@ try {
   } catch (ex) {
     // Give up.
     throw new Error(
-        "`" + modPath+ ".node` is missing. Try reinstalling `node-capnp`?");
+        "`capnp.node` is missing. Try reinstalling `node-capnp`?");
   }
 }
 
