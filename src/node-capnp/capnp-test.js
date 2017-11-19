@@ -263,31 +263,48 @@ child.stdio[1].once("readable", function() {
       closed: false
     };
 
-    var localCap = new capnp.Capability(pow, Calculator.Function);
-    assert.equal(9, wait(localCap.call([3, 2])).value);
-    assert(!pow.closed);
-    localCap.close();
-    assert(pow.closed);
+    function usePow(pow) {
+      var localCap = new capnp.Capability(pow, Calculator.Function);
+      assert.equal(9, wait(localCap.call([3, 2])).value);
+      assert(!pow.closed);
+      localCap.close();
+      assert(pow.closed);
 
-    var promise = calc.evaluate(
-        {call: {"function": subtract, params: [
-            {call: {"function": add, params: [
-                {literal: 123}, {literal: 456}]}},
-            {literal: 321}]}});
+      var promise = calc.evaluate(
+          {call: {"function": subtract, params: [
+              {call: {"function": add, params: [
+                  {literal: 123}, {literal: 456}]}},
+              {literal: 321}]}});
 
-    var value = promise.value;
-    assert.equal(258, wait(value.read()).value);
-    value.close();
+      var value = promise.value;
+      assert.equal(258, wait(value.read()).value);
+      value.close();
 
-    pow.closed = false;
-    value = calc.evaluate(
-        {call: {"function": pow, params: [{literal: 2}, {literal: 4}]}}).value;
-    assert.equal(16, wait(value.read()).value);
+      pow.closed = false;
+      value = calc.evaluate(
+          {call: {"function": pow, params: [{literal: 2}, {literal: 4}]}}).value;
+      assert.equal(16, wait(value.read()).value);
 
-    // Wait a moment to give the capability a chance to be dropped.
-    wait(new Promise((resolve, reject) => setTimeout(resolve, 10)));
-    assert(pow.closed);
-    value.close();
+      // Wait a moment to give the capability a chance to be dropped.
+      wait(new Promise((resolve, reject) => setTimeout(resolve, 10)));
+      assert(pow.closed);
+      value.close();
+    }
+    usePow(pow);
+
+    // Try using a class.
+    class PowClass {
+      constructor() {
+        this.closed = false
+      }
+      call(params) {
+        return Math.pow(params[0], params[1]);
+      }
+      close() {
+        this.closed = true;
+      }
+    };
+    usePow(new PowClass());
 
     // Try wrapping a promise as a capability -- calls are queued until resolution.
     var resolvePromisedCalc;
