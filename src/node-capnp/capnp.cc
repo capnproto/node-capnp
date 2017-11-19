@@ -892,11 +892,14 @@ public:
     if (getFunctionTemplate<T>()->HasInstance(obj)) {
       return *reinterpret_cast<WrappedObject<T>*>(obj->GetAlignedPointerFromInternalField(0))->ptr;
     } else {
-      v8::Handle<v8::Value> native = obj->GetHiddenValue(newSymbol("capnp::native"));
-      if (native.IsEmpty() || native->IsUndefined()) {
-        return nullptr;
-      } else {
+      v8::Isolate* isolate = v8::Isolate::GetCurrent();
+      v8::Handle<v8::Value> native;
+      if (obj->GetPrivate(isolate->GetCurrentContext(),
+              v8::Private::ForApi(isolate, newSymbol("capnp::native"))).ToLocal(&native) &&
+          !native->IsUndefined()) {
         return tryUnwrap<T>(native);
+      } else {
+        return nullptr;
       }
     }
   }
@@ -1013,7 +1016,11 @@ void setNative(const v8::FunctionCallbackInfo<v8::Value>& args) {
   // passed to fromJs().
 
   if (args[0]->IsObject()) {
-    v8::Object::Cast(*args[0])->SetHiddenValue(newSymbol("capnp::native"), args[1]);
+    v8::Isolate* isolate = v8::Isolate::GetCurrent();
+    v8::Object::Cast(*args[0])->SetPrivate(
+        isolate->GetCurrentContext(),
+        v8::Private::ForApi(isolate, newSymbol("capnp::native")),
+        args[1]);
   }
 }
 
@@ -1876,7 +1883,11 @@ void fromBytes(const v8::FunctionCallbackInfo<v8::Value>& args) {
       }
     }
 
-    wrapper->SetHiddenValue(newSymbol("buffer"), bufferHandle);
+    v8::Isolate* isolate = v8::Isolate::GetCurrent();
+    wrapper->SetPrivate(
+        isolate->GetCurrentContext(),
+        v8::Private::ForApi(isolate, newSymbol("capnp::buffer")),
+        bufferHandle);
     return wrapper;
   });
 }
