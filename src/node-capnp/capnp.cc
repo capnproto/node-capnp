@@ -866,6 +866,17 @@ class Wrapper {
       handle.SetWeak(this, &deleteCallback, v8::WeakCallbackType::kParameter);
     }
 
+    ~WrappedObject() {
+      // Since destructors might perform non-trivial operations, including calling back into
+      // JavaScript, delay the destructor until the next turn of the event loop.
+      T* ptrCopy = ptr;
+      kj::evalLater([ptrCopy]() {
+        delete ptrCopy;
+      }).detach([](kj::Exception&& exception) {
+        KJ_LOG(ERROR, exception);
+      });
+    }
+
     static void deleteCallback(const v8::WeakCallbackInfo<WrappedObject>& data) {
       delete reinterpret_cast<WrappedObject*>(data.GetParameter());
     }
