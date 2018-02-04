@@ -47,7 +47,6 @@
 #include <set>
 #include <stdlib.h>
 #include <sys/uio.h>
-#include <algorithm>
 
 #include <typeinfo>
 #include <typeindex>
@@ -2369,50 +2368,16 @@ void cancel(const v8::FunctionCallbackInfo<v8::Value>& args) {
 // -----------------------------------------------------------------------------
 // Local caps
 
-struct TypeHash {
-  inline size_t operator()(const capnp::Type& t) const {
-    return t.hashCode();
-  }
-};
-
-std::unordered_map<capnp::Type, uint, TypeHash> localCapTypeCounts;
-
-void dumpLocalCapTypeCounts(const v8::FunctionCallbackInfo<v8::Value>& args) {
-  liftKj(args, [&]() -> void {
-    typedef std::pair<capnp::Type, uint> E;
-    kj::Array<E> array = KJ_MAP(e, localCapTypeCounts) { return E(e); };
-
-    std::sort(array.begin(), array.end(),
-        [](const E& a, const E& b) { return a.second > b.second; });
-
-    auto lines = KJ_MAP(e, array) {
-      return kj::str('\n', e.second, " ", e.first.asInterface().getProto().getDisplayName());
-    };
-
-    auto typeStats = kj::strArray(lines, "");
-    KJ_LOG(WARNING, "dumping types of local capabilities", typeStats);
-  });
-}
-
 class LocalCap final: public capnp::DynamicCapability::Server {
 public:
   LocalCap(capnp::InterfaceSchema schema, v8::Handle<v8::Object> object,
            CapnpContext& capnpContext, v8::Handle<v8::Value> capnpContextHandle)
       : capnp::DynamicCapability::Server(schema),
-        object(object), capnpContext(capnpContext), capnpContextHandle(capnpContextHandle) {
-    localCapTypeCounts[schema]++;
-  }
+        object(object), capnpContext(capnpContext), capnpContextHandle(capnpContextHandle) {}
 
   ~LocalCap() {
     // Call the object's close() method if it has one, so that it can react to the handle being
     // dropped.
-
-    auto iter = localCapTypeCounts.find(getSchema());
-    if (iter == localCapTypeCounts.end()) {
-      KJ_LOG(ERROR, "inconsistent type counts");
-    } else if (--iter->second == 0) {
-      localCapTypeCounts.erase(iter);
-    }
 
     v8::HandleScope scope(v8::Isolate::GetCurrent());
 
@@ -2879,8 +2844,6 @@ void init(v8::Handle<v8::Object> exports) {
   mapFunction("matchPowerboxQuery", matchPowerboxQuery);
   mapFunction("chacha20", chacha20);
 #endif
-
-  mapFunction("dumpLocalCapTypeCounts", dumpLocalCapTypeCounts);
 }
 
 }  // namespace
