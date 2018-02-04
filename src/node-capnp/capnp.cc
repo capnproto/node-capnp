@@ -2241,11 +2241,18 @@ void pipelineToJs(CapnpContext& context, capnp::DynamicStruct::Pipeline&& pipeli
     v8::Handle<v8::Object> fieldValue;
 
     switch (proto.which()) {
-      case capnp::schema::Field::SLOT:
-        switch (proto.getSlot().getType().which()) {
+      case capnp::schema::Field::SLOT: {
+        auto type = field.getType();
+        switch (type.which()) {
           case capnp::schema::Type::STRUCT:
             fieldValue = pipelineStructFieldToJs(context, pipeline, field, capConstructor);
             break;
+          case capnp::schema::Type::ANY_POINTER:
+            if (type.whichAnyPointerKind() !=
+                capnp::schema::Type::AnyPointer::Unconstrained::CAPABILITY) {
+              continue;
+            }
+            // fallthrough
           case capnp::schema::Type::INTERFACE: {
             auto cap = pipeline.get(field).releaseAs<capnp::DynamicCapability>();
             capnp::Schema capSchema = cap.getSchema();
@@ -2262,6 +2269,7 @@ void pipelineToJs(CapnpContext& context, capnp::DynamicStruct::Pipeline&& pipeli
             continue;
         }
         break;
+      }
 
       case capnp::schema::Field::GROUP:
         fieldValue = pipelineStructFieldToJs(context, pipeline, field, capConstructor);
