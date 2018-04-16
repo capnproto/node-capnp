@@ -2791,6 +2791,31 @@ void chacha20(const v8::FunctionCallbackInfo<v8::Value>& args) {
   });
 }
 
+namespace {
+
+void crashHandler(int signo, siginfo_t* info, void* context) {
+  void* traceSpace[32];
+
+  // ignoreCount = 2 to ignore crashHandler() and signal trampoline.
+  auto trace = kj::getStackTrace(traceSpace, 2);
+
+  auto message = kj::str("*** Received signal #", signo, ": ", strsignal(signo),
+                         "\nstack: ", stringifyStackTraceAddresses(trace), '\n');
+
+  kj::FdOutputStream(STDERR_FILENO).write(message.begin(), message.size());
+  _exit(1);
+}
+
+}  // namespace
+
+void catchSegfaults() {
+  struct sigaction action;
+  memset(&action, 0, sizeof(action));
+  action.sa_flags = SA_SIGINFO | SA_ONSTACK | SA_NODEFER | SA_RESETHAND;
+  action.sa_sigaction = &crashHandler;
+  KJ_SYSCALL(sigaction(SIGSEGV, &action, nullptr));
+}
+
 #endif // SANDSTORM_BUILD
 
 // -----------------------------------------------------------------------------
@@ -2843,6 +2868,7 @@ void init(v8::Handle<v8::Object> exports) {
 #ifdef SANDSTORM_BUILD
   mapFunction("matchPowerboxQuery", matchPowerboxQuery);
   mapFunction("chacha20", chacha20);
+  catchSegfaults();
 #endif
 }
 
