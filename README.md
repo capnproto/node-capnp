@@ -22,7 +22,7 @@ messages from complete Javascript objects.  This actually makes the library
 somewhat nicer syntactically than it would be otherwise, but it is not fast.
 
 A pure-Javascript implementation would likely be much faster.  See
-[capnp-js](https://github.com/capnp-js/serialization) for such an
+[capnp-js](https://github.com/capnp-js) for such an
 implementation.  Unfortunately, that implementation is incomplete and does not
 support [RPC](https://github.com/capnp-js/rpc) just yet.  Hence, this hack was 
 created for short-term use.
