@@ -194,7 +194,7 @@ function wrapLocalMethod(self, method) {
 function LocalCapWrapper(obj) {
   var type = obj;
   while (type && type !== Object.prototype) {
-    Object.getOwnPropertyNames(type).forEach(name => {
+    Object.getOwnPropertyNames(type).forEach(function(name) {
       if (name === "close") {
         // Not an RPC method. Called when the capability has no clients.
         this.close = obj.close.bind(obj);
