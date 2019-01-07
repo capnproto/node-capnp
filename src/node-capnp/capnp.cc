@@ -884,7 +884,9 @@ class Wrapper {
 public:
   template <typename T>
   v8::Local<v8::Object> wrap(T* ptr) {
-    v8::Local<v8::Object> obj = getFunctionTemplate<T>()->GetFunction()->NewInstance();
+    v8::Local<v8::Object> obj = getFunctionTemplate<T>()
+        ->GetFunction()->NewInstance(v8::Isolate::GetCurrent()->GetCurrentContext())
+        .ToLocalChecked();
     obj->SetAlignedPointerInInternalField(0, new WrappedObject<T>(obj, ptr));
     return obj;
   }
@@ -1457,7 +1459,9 @@ struct FromJsConverter {
           return orphanage.newOrphanCopy(*cap);
         } else if (!localCapType.IsEmpty()) {
           v8::Handle<v8::Value> arg = js;
-          auto wrapped = localCapType->NewInstance(1, &arg);
+          auto wrapped = localCapType->NewInstance(
+              v8::Isolate::GetCurrent()->GetCurrentContext(), 1, &arg)
+              .ToLocalChecked();
           if (!wrapped.IsEmpty()) {
             auto cap = fromLocalCap(schema, wrapped);
             return orphanage.newOrphanCopy(cap);
@@ -1475,7 +1479,9 @@ struct FromJsConverter {
             return orphanage.newOrphanCopy(*cap);
           } else if (!localCapType.IsEmpty()) {
             v8::Handle<v8::Value> arg = js;
-            auto wrapped = localCapType->NewInstance(1, &arg);
+            auto wrapped = localCapType->NewInstance(
+                v8::Isolate::GetCurrent()->GetCurrentContext(), 1, &arg)
+                .ToLocalChecked();
             if (!wrapped.IsEmpty()) {
               auto cap = fromLocalCap(capnp::Schema::from<capnp::Capability>(), wrapped);
               return orphanage.newOrphanCopy(cap);
@@ -1704,7 +1710,9 @@ v8::Handle<v8::Value> valueToJs(CapnpContext& context, capnp::DynamicValue::Read
       if (capConstructor->IsFunction()) {
         v8::Function* func = v8::Function::Cast(*capConstructor);
         v8::Handle<v8::Value> args[2] = { result, context.wrapper.wrapCopy(schema) };
-        result = func->NewInstance(kj::size(args), args);
+        result = func->NewInstance(
+            v8::Isolate::GetCurrent()->GetCurrentContext(), kj::size(args), args)
+            .ToLocalChecked();
         if (result.IsEmpty()) {
           return emptyHandle;
         }
@@ -1720,7 +1728,9 @@ v8::Handle<v8::Value> valueToJs(CapnpContext& context, capnp::DynamicValue::Read
         if (capConstructor->IsFunction()) {
           v8::Function* func = v8::Function::Cast(*capConstructor);
           v8::Handle<v8::Value> args[1] = { result };
-          result = func->NewInstance(kj::size(args), args);
+          result = func->NewInstance(
+            v8::Isolate::GetCurrent()->GetCurrentContext(), kj::size(args), args)
+            .ToLocalChecked();
           if (result.IsEmpty()) {
             return emptyHandle;
           }
@@ -2260,7 +2270,9 @@ void pipelineToJs(CapnpContext& context, capnp::DynamicStruct::Pipeline&& pipeli
               v8::Function* func = v8::Function::Cast(*capConstructor);
               v8::Handle<v8::Value> args[2] = { fieldValue,
                   context.wrapper.wrapCopy(kj::mv(capSchema)) };
-              fieldValue = func->NewInstance(kj::size(args), args);
+              fieldValue = func->NewInstance(
+                  v8::Isolate::GetCurrent()->GetCurrentContext(), kj::size(args), args)
+                  .ToLocalChecked();
             }
             break;
           }

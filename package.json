@@ -1,6 +1,6 @@
 {
   "name": "capnp",
-  "version": "0.3.1",
+  "version": "0.4.0",
   "description": "A wrapper for the C++ Cap'n Proto library",
   "keywords": [ "capnproto", "serialization" ],
   "homepage": "http://capnproto.org",
@@ -26,7 +26,7 @@
     "url": "git://github.com/kentonv/node-capnp.git"
   },
   "engines": {
-    "node": ">=8.0"
+    "node": ">=10.0"
   },
   "license": "MIT"
 }
