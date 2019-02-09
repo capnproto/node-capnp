@@ -236,7 +236,7 @@ static int applyFlags(int fd, uint flags) {
 
 static constexpr uint NEW_FD_FLAGS =
 #if __linux__
-    kj::LowLevelAsyncIoProvider::ALREADY_CLOEXEC || kj::LowLevelAsyncIoProvider::ALREADY_NONBLOCK ||
+    kj::LowLevelAsyncIoProvider::ALREADY_CLOEXEC | kj::LowLevelAsyncIoProvider::ALREADY_NONBLOCK |
 #endif
     kj::LowLevelAsyncIoProvider::TAKE_OWNERSHIP;
 // We always try to open FDs with CLOEXEC and NONBLOCK already set on Linux, but on other platforms
