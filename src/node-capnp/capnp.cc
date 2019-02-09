@@ -409,6 +409,13 @@ public:
     KJ_SYSCALL(shutdown(fd, SHUT_WR));
   }
 
+#if CAPNP_VERSION >= 8000
+  kj::Promise<void> whenWriteDisconnected() override {
+    // TODO(someday): Implement using UV_DISCONNECT?
+    return kj::NEVER_DONE;
+  }
+#endif
+
 private:
   kj::Promise<size_t> tryReadInternal(void* buffer, size_t minBytes, size_t maxBytes,
                                       size_t alreadyRead) {
