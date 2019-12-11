@@ -76,6 +76,7 @@ function build() {
 		process.platform === 'win32' ? 'node-gyp.cmd' : 'node-gyp',
 		['rebuild'].concat(args),
 		{customFds: [0, 1, 2]})
+	.on('close', function(){ afterBuild(); })
 	.on('exit', function(err) {
 		if (err) {
 			if (err === 127) {
@@ -88,7 +89,6 @@ function build() {
 			}
 			return process.exit(err);
 		}
-		afterBuild();
 	});
 }
 
