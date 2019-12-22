@@ -72,10 +72,12 @@ if (!force) {
 
 // Build it
 function build() {
-	cp.spawn(
+	var sp = cp.spawn(
 		process.platform === 'win32' ? 'node-gyp.cmd' : 'node-gyp',
 		['rebuild'].concat(args),
-		{customFds: [0, 1, 2]})
+		{customFds: [0, 1, 2]});
+
+	sp
 	.on('close', function(){ afterBuild(); })
 	.on('exit', function(err) {
 		if (err) {
@@ -90,6 +92,8 @@ function build() {
 			return process.exit(err);
 		}
 	});
+	sp.stdout.pipe(process.stdout);
+	sp.stderr.pipe(process.stderr);
 }
 
 // Move it to expected location
