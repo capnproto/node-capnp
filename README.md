@@ -118,6 +118,25 @@ we copied.)
     // object containing the results by name.
     promise.then(function(response) {
       console.log(response.namedResult);
+    })
+    // If the remote object throws an rpc exception, the promise will be
+    // rejected. The error returned will have a property `kjType`, which
+    // will be a string representation of the exception's `type` field.
+    .catch(function(error) {
+        switch(error.kjType) {
+        case 'failed':
+            console.log("A generic problem occurred:", error.message);
+            break;
+        case 'overloaded':
+            console.log("Resource overload on the remote end:", error.message);
+            break;
+        case 'disconnected':
+            // ...
+            break;
+        case 'unimplemented':
+            // ...
+            break;
+        }
     });
 
 ### Pipelining
@@ -195,6 +214,22 @@ then use that:
 
 In this case, the library only wraps `myFoo` as a capability once, and then
 calls `close()` once all copies of that reference have been dropped.
+
+If one of your methods throws an exception, or returns a promise which
+is subsequently rejected, it will be converted to a capnproto rpc
+exception. If the exception has a `kjType` property, that will be used
+for the exception's `type` field, otherwise the type will be `failed`.
+
+    var myBar = {
+        bar: function(foo) {
+            if(!bazAvailable()) {
+                var err = new Error("The baz is busy; try again later.");
+                err.kjType = 'overloaded';
+                throw(err);
+            }
+            // ...
+        }
+    }
 
 ### Exporting a bootstrap capability
 
