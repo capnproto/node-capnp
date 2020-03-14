@@ -236,7 +236,7 @@ static int applyFlags(int fd, uint flags) {
 
 static constexpr uint NEW_FD_FLAGS =
 #if __linux__
-    kj::LowLevelAsyncIoProvider::ALREADY_CLOEXEC || kj::LowLevelAsyncIoProvider::ALREADY_NONBLOCK ||
+    kj::LowLevelAsyncIoProvider::ALREADY_CLOEXEC | kj::LowLevelAsyncIoProvider::ALREADY_NONBLOCK |
 #endif
     kj::LowLevelAsyncIoProvider::TAKE_OWNERSHIP;
 // We always try to open FDs with CLOEXEC and NONBLOCK already set on Linux, but on other platforms
@@ -409,6 +409,13 @@ public:
     KJ_SYSCALL(shutdown(fd, SHUT_WR));
   }
 
+#if CAPNP_VERSION >= 8000
+  kj::Promise<void> whenWriteDisconnected() override {
+    // TODO(someday): Implement using UV_DISCONNECT?
+    return kj::NEVER_DONE;
+  }
+#endif
+
 private:
   kj::Promise<size_t> tryReadInternal(void* buffer, size_t minBytes, size_t maxBytes,
                                       size_t alreadyRead) {
@@ -563,7 +570,7 @@ public:
       struct sockaddr_in6 inet6;
     } addr;
     addrlen = sizeof(addr);
-    KJ_SYSCALL(getsockname(fd, &addr.generic, &addrlen));
+    KJ_SYSCALL(::getsockname(fd, &addr.generic, &addrlen));
     switch (addr.generic.sa_family) {
       case AF_INET: return ntohs(addr.inet4.sin_port);
       case AF_INET6: return ntohs(addr.inet6.sin6_port);
