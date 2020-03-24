@@ -1,8 +1,11 @@
 {
   "name": "capnp",
-  "version": "0.4.0",
+  "version": "0.5.0",
   "description": "A wrapper for the C++ Cap'n Proto library",
-  "keywords": [ "capnproto", "serialization" ],
+  "keywords": [
+    "capnproto",
+    "serialization"
+  ],
   "homepage": "http://capnproto.org",
   "author": {
     "name": "Kenton Varda",
@@ -15,7 +18,6 @@
       "email": "jparyani@gmail.com"
     }
   ],
-
   "main": "src/node-capnp/capnp.js",
   "scripts": {
     "install": "node ./build.js",
