@@ -194,7 +194,8 @@ private:
   }
 
   static void doRun(uv_timer_t* handle) {
-    UvEventPort* self = handle == nullptr ? nullptr : reinterpret_cast<UvEventPort*>(handle->data);
+    KJ_ASSERT(handle != nullptr);
+    UvEventPort* self = reinterpret_cast<UvEventPort*>(handle->data);
     self->run();
   }
 };
