@@ -49,9 +49,9 @@ On Debian/Ubuntu, you can install these like so:
 
     sudo apt-get install nodejs-dev nodejs-legacy capnproto-dev g++
 
-### Form source
+### From source
 
-    git clone git://github.com/kenton/node-capnp.git
+    git clone git://github.com/capnproto/node-capnp.git
     cd node-capnp
     npm install
 
