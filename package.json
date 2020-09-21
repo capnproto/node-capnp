@@ -19,6 +19,7 @@
     }
   ],
   "main": "src/node-capnp/capnp.js",
+  "types": "src/node-capnp/capnp.d.ts",
   "scripts": {
     "install": "node ./build.js",
     "test": "node src/node-capnp/capnp-test.js"
