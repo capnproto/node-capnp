@@ -6,6 +6,10 @@
       'libraries': ['-lkj', '-lkj-async', '-lcapnp', '-lcapnpc', '-lcapnp-rpc'],
       'cflags_cc': ['-std=c++14'],
       'cflags_cc!': ['-fno-rtti', '-fno-exceptions'],
+      'include_dirs': [
+        'src',
+        '<!(node -e "require(\'nan\')")'
+      ],
       'conditions': [
         [ 'OS=="mac"', {
           'xcode_settings': {

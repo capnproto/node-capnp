@@ -28,6 +28,7 @@
 
 #include <node.h>
 #include <node_buffer.h>
+#include <nan.h>
 #include <capnp/dynamic.h>
 #include <capnp/schema-parser.h>
 #include <kj/debug.h>
@@ -658,10 +659,10 @@ private:
 // TODO(cleanup): V8 added this requirement that everything pass an Isolate. We should probably be
 //   stringing it through rather than using v8::Isolate::GetCurrent() everywhere.
 v8::Local<v8::String> newString(const char* str) {
-  return v8::String::NewFromUtf8(v8::Isolate::GetCurrent(), str);
+  return v8::String::NewFromUtf8(v8::Isolate::GetCurrent(), str, v8::NewStringType::kNormal).ToLocalChecked();
 }
 v8::Local<v8::String> newSymbol(const char* str) {
-  return v8::String::NewFromUtf8(v8::Isolate::GetCurrent(), str, v8::String::kInternalizedString);
+  return v8::String::NewFromUtf8(v8::Isolate::GetCurrent(), str, v8::NewStringType::kInternalized).ToLocalChecked();
 }
 v8::Local<v8::Integer> newInt32(int i) {
   return v8::Int32::New(v8::Isolate::GetCurrent(), i);
@@ -728,7 +729,7 @@ kj::String toKjString(v8::Local<v8::String> handle) {
 
 kj::String toKjString(v8::Local<v8::Value> handle) {
   v8::HandleScope scope(v8::Isolate::GetCurrent());
-  return toKjString(handle->ToString(v8::Isolate::GetCurrent()));
+  return toKjString(Nan::To<v8::String>(handle).ToLocalChecked());
 }
 
 #define KJV8_STACK_STR(name, handle, sizeHint) \
@@ -736,7 +737,7 @@ kj::String toKjString(v8::Local<v8::Value> handle) {
   kj::Array<char> name##_heap; \
   kj::StringPtr name; \
   { \
-    v8::Local<v8::String> v8str = handle->ToString(v8::Isolate::GetCurrent()); \
+    v8::Local<v8::String> v8str = Nan::To<v8::String>(handle).ToLocalChecked(); \
     char* ptr; \
     size_t len = v8str->Utf8Length(v8::Isolate::GetCurrent()); \
     if (len < sizeHint) { \
@@ -757,8 +758,8 @@ v8::Local<v8::Value> toJsException(kj::Exception&& exception) {
   if (result->IsObject()) {
     v8::Object* obj = v8::Object::Cast(*result);
 
-    obj->Set(newSymbol("cppFile"), newString(exception.getFile()));
-    obj->Set(newSymbol("line"), newInt32(exception.getLine()));
+    obj->Set(v8::Isolate::GetCurrent()->GetCurrentContext(), newSymbol("cppFile"), newString(exception.getFile())).Check();
+    obj->Set(v8::Isolate::GetCurrent()->GetCurrentContext(), newSymbol("line"), newInt32(exception.getLine())).Check();
 
     const char* type = "unknown";
     switch (exception.getType()) {
@@ -767,7 +768,7 @@ v8::Local<v8::Value> toJsException(kj::Exception&& exception) {
       case kj::Exception::Type::DISCONNECTED  : type = "disconnected" ; break;
       case kj::Exception::Type::UNIMPLEMENTED : type = "unimplemented"; break;
     }
-    obj->Set(newSymbol("kjType"), newSymbol(type));
+    obj->Set(v8::Isolate::GetCurrent()->GetCurrentContext(), newSymbol("kjType"), newSymbol(type)).Check();
   } else {
     KJ_LOG(WARNING, "v8 exception is not an object?");
   }
@@ -782,7 +783,7 @@ kj::Exception fromJsException(v8::Local<v8::Value> exception) {
   if (exception->IsObject()) {
     v8::HandleScope scope(v8::Isolate::GetCurrent());
     v8::Object* obj = v8::Object::Cast(*exception);
-    v8::Local<v8::Value> value = obj->Get(newSymbol("kjType"));
+    v8::Local<v8::Value> value = obj->Get(v8::Isolate::GetCurrent()->GetCurrentContext(), newSymbol("kjType")).ToLocalChecked();
     if (!value.IsEmpty() && !value->IsUndefined()) {
       auto name = toKjString(value);
       if (name == "overloaded") {
@@ -794,7 +795,7 @@ kj::Exception fromJsException(v8::Local<v8::Value> exception) {
       }
     }
 
-    v8::Local<v8::Value> stack = obj->Get(newSymbol("stack"));
+    v8::Local<v8::Value> stack = obj->Get(v8::Isolate::GetCurrent()->GetCurrentContext(), newSymbol("stack")).ToLocalChecked();
     if (!stack.IsEmpty() && !stack->IsUndefined()) {
       description = toKjString(stack);
     } else {
@@ -1056,14 +1057,14 @@ v8::Local<v8::Value> schemaToObject(capnp::ParsedSchema schema, CapnpContext& co
   } else {
     auto result = context.wrapper.wrap(new capnp::Schema(schema));
 
-    result->Set(newSymbol("typeId"),
+    result->Set(v8::Isolate::GetCurrent()->GetCurrentContext(), newSymbol("typeId"),
                 // 64-bit values must be stringified to avoid losing precision.
-                newString(kj::str(proto.getId()).cStr()));
+                newString(kj::str(proto.getId()).cStr())).Check();
 
     for (auto nested: proto.getNestedNodes()) {
       kj::StringPtr name = nested.getName();
-      result->Set(newSymbol(name.cStr()),
-                  schemaToObject(schema.getNested(name), context, wrappedContext));
+      result->Set(v8::Isolate::GetCurrent()->GetCurrentContext(), newSymbol(name.cStr()),
+                  schemaToObject(schema.getNested(name), context, wrappedContext)).Check();
     }
 
     return result;
@@ -1095,7 +1096,7 @@ void import(const v8::FunctionCallbackInfo<v8::Value>& args) {
       searchPath = kj::heapArray<kj::String>(arr->Length());
       searchPathPtrs = kj::heapArray<kj::StringPtr>(searchPath.size());
       for (uint i: kj::indices(searchPath)) {
-        searchPath[i] = toKjString(arr->Get(i)->ToString(v8::Isolate::GetCurrent()));
+        searchPath[i] = toKjString(Nan::To<v8::String>(arr->Get(v8::Isolate::GetCurrent()->GetCurrentContext(), i).ToLocalChecked()).ToLocalChecked());
         searchPathPtrs[i] = searchPath[i];
       }
     }
@@ -1124,8 +1125,8 @@ void enumerateMethods(capnp::InterfaceSchema schema, v8::Local<v8::Object> metho
 
     auto methods = schema.getMethods();
     for (auto method: methods) {
-      methodMap->Set(newSymbol(method.getProto().getName().cStr()),
-                     context.wrapper.wrapCopy(method));
+      methodMap->Set(v8::Isolate::GetCurrent()->GetCurrentContext(), newSymbol(method.getProto().getName().cStr()),
+                     context.wrapper.wrapCopy(method)).Check();
     }
   }
 }
@@ -1380,7 +1381,7 @@ struct FromJsConverter {
       case capnp::schema::Type::FLOAT64: return js->NumberValue(v8::Isolate::GetCurrent()->GetCurrentContext()).ToChecked();
       case capnp::schema::Type::TEXT: {
         v8::HandleScope scope(v8::Isolate::GetCurrent());
-        auto str = js->ToString(v8::Isolate::GetCurrent());
+        auto str = Nan::To<v8::String>(js).ToLocalChecked();
         capnp::Orphan<capnp::Text> orphan = orphanage.newOrphan<capnp::Text>(str->Utf8Length(v8::Isolate::GetCurrent()));
         str->WriteUtf8(v8::Isolate::GetCurrent(), orphan.get().begin(), orphan.get().size());
         return kj::mv(orphan);
@@ -1401,7 +1402,7 @@ struct FromJsConverter {
             // Struct lists can't adopt.
             bool error = false;
             for (uint i: kj::indices(builder)) {
-              auto element = jsArray->Get(i);
+              auto element = jsArray->Get(v8::Isolate::GetCurrent()->GetCurrentContext(), i).ToLocalChecked();
               if (element->IsObject()) {
                 if (!structFromJs(builder[i].as<capnp::DynamicStruct>(),
                                   v8::Object::Cast(*element))) {
@@ -1417,7 +1418,7 @@ struct FromJsConverter {
             bool isPointerList = builder.as<capnp::AnyList>().getElementSize() ==
                                  capnp::ElementSize::POINTER;
             for (uint i: kj::indices(builder)) {
-              auto jsElement = jsArray->Get(i);
+              auto jsElement = jsArray->Get(v8::Isolate::GetCurrent()->GetCurrentContext(), i).ToLocalChecked();
               if (isPointerList && (jsElement->IsNull() || jsElement->IsUndefined())) {
                 // Skip null element.
               } else {
@@ -1566,10 +1567,10 @@ struct FromJsConverter {
   //  }
     v8::Local<v8::Array> fieldNames = js->GetPropertyNames(v8::Isolate::GetCurrent()->GetCurrentContext()).ToLocalChecked();
     for (uint i: kj::range(0u, fieldNames->Length())) {
-      auto jsName = fieldNames->Get(i);
+      auto jsName = fieldNames->Get(v8::Isolate::GetCurrent()->GetCurrentContext(), i).ToLocalChecked();
       KJV8_STACK_STR(fieldName, jsName, 32);
       KJ_IF_MAYBE(field, schema.findFieldByName(fieldName)) {
-        fieldFromJs(builder, *field, js->Get(jsName));
+        fieldFromJs(builder, *field, js->Get(v8::Isolate::GetCurrent()->GetCurrentContext(), jsName).ToLocalChecked());
       } else {
         throwException(v8::Exception::TypeError(newString(
             kj::str("No field named: ", fieldName).cStr())));
@@ -1611,7 +1612,7 @@ void fromJs(const v8::FunctionCallbackInfo<v8::Value>& args) {
       uint length = kj::min(array->Length(), fields.size());
 
       for (uint i = 0; i < length; i++) {
-        if (!converter.fieldFromJs(builder, fields[i], array->Get(i))) {
+        if (!converter.fieldFromJs(builder, fields[i], array->Get(v8::Isolate::GetCurrent()->GetCurrentContext(), i).ToLocalChecked())) {
           break;
         }
       }
@@ -1662,7 +1663,7 @@ v8::Local<v8::Value> valueToJs(CapnpContext& context, capnp::DynamicValue::Reade
     case capnp::DynamicValue::TEXT: {
       capnp::Text::Reader text = value.as<capnp::Text>();
       return v8::String::NewFromUtf8(v8::Isolate::GetCurrent(), text.begin(),
-                                     v8::String::kNormalString, text.size());
+                                     v8::NewStringType::kNormal, text.size()).ToLocalChecked();
     }
     case capnp::DynamicValue::DATA: {
       capnp::Data::Reader data = value.as<capnp::Data>();
@@ -1679,7 +1680,7 @@ v8::Local<v8::Value> valueToJs(CapnpContext& context, capnp::DynamicValue::Reade
         if (subValue.IsEmpty()) {
           return emptyHandle;
         }
-        array->Set(i, subValue);
+        array->Set(v8::Isolate::GetCurrent()->GetCurrentContext(), i, subValue).Check();
       }
       return scope.Escape(array);
     }
@@ -1775,7 +1776,7 @@ setField:
   if (fieldValue.IsEmpty()) {
     return false;
   } else {
-    object->Set(newSymbol(proto.getName().cStr()), fieldValue);
+    object->Set(v8::Isolate::GetCurrent()->GetCurrentContext(), newSymbol(proto.getName().cStr()), fieldValue).Check();
     return true;
   }
 }
@@ -1814,12 +1815,12 @@ void toJsParams(const v8::FunctionCallbackInfo<v8::Value>& args) {
       auto fields = schema.getFields();
       auto result = v8::Array::New(v8::Isolate::GetCurrent(), fields.size());
       for (uint i: kj::indices(fields)) {
-        result->Set(i, valueToJs(context, reader.get(fields[i]), fields[i].getType(), args[1]));
+        result->Set(v8::Isolate::GetCurrent()->GetCurrentContext(), i, valueToJs(context, reader.get(fields[i]), fields[i].getType(), args[1])).Check();
       }
       return result;
     } else {
       auto result = v8::Array::New(v8::Isolate::GetCurrent(), 1);
-      result->Set(0, valueToJs(context, reader, reader.getSchema(), args[1]));
+      result->Set(v8::Isolate::GetCurrent()->GetCurrentContext(), 0, valueToJs(context, reader, reader.getSchema(), args[1])).Check();
       return result;
     }
   });
@@ -1872,8 +1873,8 @@ void fromBytes(const v8::FunctionCallbackInfo<v8::Value>& args) {
 
   return liftKj(args, [&]() -> v8::Local<v8::Value> {
     auto options = args[2].As<v8::Object>();
-    bool packed = options->Get(newSymbol("packed"))->BooleanValue(v8::Isolate::GetCurrent());
-    bool flat = options->Get(newSymbol("flat"))->BooleanValue(v8::Isolate::GetCurrent());
+    bool packed = options->Get(v8::Isolate::GetCurrent()->GetCurrentContext(), newSymbol("packed")).ToLocalChecked()->BooleanValue(v8::Isolate::GetCurrent());
+    bool flat = options->Get(v8::Isolate::GetCurrent()->GetCurrentContext(), newSymbol("flat")).ToLocalChecked()->BooleanValue(v8::Isolate::GetCurrent());
 
     v8::Local<v8::Object> wrapper;
 
@@ -1930,8 +1931,8 @@ void toBytes(const v8::FunctionCallbackInfo<v8::Value>& args) {
 
   return liftKj(args, [&]() -> v8::Local<v8::Value> {
     auto options = args[1].As<v8::Object>();
-    bool packed = options->Get(newSymbol("packed"))->BooleanValue(v8::Isolate::GetCurrent());
-    bool flat = options->Get(newSymbol("flat"))->BooleanValue(v8::Isolate::GetCurrent());
+    bool packed = options->Get(v8::Isolate::GetCurrent()->GetCurrentContext(), newSymbol("packed")).ToLocalChecked()->BooleanValue(v8::Isolate::GetCurrent());
+    bool flat = options->Get(v8::Isolate::GetCurrent()->GetCurrentContext(), newSymbol("flat")).ToLocalChecked()->BooleanValue(v8::Isolate::GetCurrent());
 
     if (flat) {
       // Write whole message to flat array.
@@ -2299,7 +2300,7 @@ void pipelineToJs(CapnpContext& context, capnp::DynamicStruct::Pipeline&& pipeli
     }
 
     KJ_ASSERT(!fieldValue.IsEmpty());
-    js->Set(newSymbol(proto.getName().cStr()), fieldValue);
+    js->Set(v8::Isolate::GetCurrent()->GetCurrentContext(), newSymbol(proto.getName().cStr()), fieldValue).Check();
   }
 }
 
@@ -2401,7 +2402,7 @@ public:
 
     v8::HandleScope scope(v8::Isolate::GetCurrent());
 
-    auto jsMethod = object->Get(newSymbol("close"));
+    auto jsMethod = object->Get(v8::Isolate::GetCurrent()->GetCurrentContext(), newSymbol("close")).ToLocalChecked();
     if (jsMethod->IsFunction()) {
       auto func = v8::Local<v8::Function>::Cast(jsMethod);
       node::MakeCallback(scope.GetIsolate(), object.get(), func, 0, nullptr);
@@ -2412,7 +2413,7 @@ public:
       capnp::CallContext<capnp::DynamicStruct, capnp::DynamicStruct> context) override {
     v8::HandleScope scope(v8::Isolate::GetCurrent());
 
-    auto jsMethod = object->Get(newSymbol(method.getProto().getName().cStr()));
+    auto jsMethod = object->Get(v8::Isolate::GetCurrent()->GetCurrentContext(), newSymbol(method.getProto().getName().cStr())).ToLocalChecked();
 
     if (!jsMethod->IsFunction()) {
       auto name = method.getProto().getName();
@@ -2486,12 +2487,12 @@ void newPromisedCap(const v8::FunctionCallbackInfo<v8::Value>& args) {
     auto paf = kj::newPromiseAndFulfiller<capnp::Capability::Client>();
 
     v8::Local<v8::Object> result = v8::Object::New(v8::Isolate::GetCurrent());
-    result->Set(newSymbol("cap"),
+    result->Set(v8::Isolate::GetCurrent()->GetCurrentContext(), newSymbol("cap"),
         context.wrapper.wrapCopy(
             capnp::Capability::Client(kj::mv(paf.promise))
-                .castAs<capnp::DynamicCapability>(schema.asInterface())));
-    result->Set(newSymbol("fulfiller"),
-        context.wrapper.wrapCopy(kj::mv(paf.fulfiller)));
+                .castAs<capnp::DynamicCapability>(schema.asInterface()))).Check();
+    result->Set(v8::Isolate::GetCurrent()->GetCurrentContext(), newSymbol("fulfiller"),
+        context.wrapper.wrapCopy(kj::mv(paf.fulfiller))).Check();
     return result;
   });
 }
@@ -2845,9 +2846,9 @@ void init(v8::Local<v8::Object> exports) {
   auto wrappedContext = context->wrapper.wrap(context);
 
   auto mapFunction = [&](const char* name, v8::FunctionCallback callback) {
-    exports->Set(newSymbol(name),
+    exports->Set(v8::Isolate::GetCurrent()->GetCurrentContext(), newSymbol(name),
         v8::FunctionTemplate::New(v8::Isolate::GetCurrent(), callback, wrappedContext)
-            ->GetFunction(v8::Isolate::GetCurrent()->GetCurrentContext()).ToLocalChecked());
+            ->GetFunction(v8::Isolate::GetCurrent()->GetCurrentContext()).ToLocalChecked()).Check();
   };
 
   mapFunction("setNative", setNative);
