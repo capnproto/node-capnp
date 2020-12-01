@@ -3,11 +3,7 @@
 
 name: Node.js CI
 
-on:
-  push:
-    branches: [ node10 ]
-  pull_request:
-    branches: [ node10 ]
+on: [push, pull_request]
 
 env:
   deb_packages: |
