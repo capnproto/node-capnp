@@ -10,10 +10,10 @@
 // rights to use, copy, modify, merge, publish, distribute, sublicense, and/or
 // sell copies of the Software, and to permit persons to whom the Software is
 // furnished to do so, subject to the following conditions:
-// 
+//
 // The above copyright notice and this permission notice shall be included in
 // all copies or substantial portions of the Software.
-// 
+//
 // THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
 // IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
 // FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
@@ -50,7 +50,13 @@ if (!{ia32: true, x64: true, arm: true}.hasOwnProperty(arch)) {
 
 // Test for pre-built library
 var modPath = platform+ '-'+ arch+ '-v8-'+ v8;
-if (!force) {
+var installDir = path.join(__dirname, 'bin', modPath);
+var installPath = path.join(installDir, 'capnp.node');
+
+if('PREBUILT_NODE_CAPNP_BINARY' in process.env) {
+	fs.mkdirSync(installDir, {recursive: true});
+	fs.copyFileSync(process.env.PREBUILT_NODE_CAPNP_BINARY, installPath);
+} else if (!force) {
 	try {
 		fs.statSync(path.join(__dirname, 'bin', modPath, 'capnp.node'));
 		console.log('`'+ modPath+ '` exists; testing');
@@ -99,7 +105,6 @@ function build() {
 // Move it to expected location
 function afterBuild() {
 	var targetPath = path.join(__dirname, 'build', debug ? 'Debug' : 'Release', 'capnp.node');
-	var installPath = path.join(__dirname, 'bin', modPath, 'capnp.node');
 
 	try {
 		fs.mkdirSync(path.join(__dirname, 'bin', modPath));
