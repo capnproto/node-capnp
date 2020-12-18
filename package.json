@@ -24,6 +24,9 @@
     "install": "node ./build.js",
     "test": "node src/node-capnp/capnp-test.js"
   },
+  "dependencies": {
+    "nan": "^2.7.0"
+  },
   "repository": {
     "type": "git",
     "url": "git://github.com/kentonv/node-capnp.git"
