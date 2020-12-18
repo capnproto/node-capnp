@@ -1,3 +1,5 @@
+[![Tests](https://github.com/capnproto/node-capnp/workflows/Node.js%20CI/badge.svg?branch=node10&event=push)](https://github.com/capnproto/node-capnp/actions?query=workflow%3A"Node.js+CI")
+
 # Cap'n Proto bindings for Node.js
 
 This package is a hacky wrapper around the [Cap'n Proto](http://capnproto.org)
