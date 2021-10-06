@@ -47,7 +47,7 @@ you must have development headers for Cap'n Proto and Node.js installed, along
 with the `node-gyp` tool and a GCC new enough for Cap'n Proto (at least 4.7).
 On Debian/Ubuntu, you can install these like so:
 
-    sudo apt-get install nodejs-dev nodejs-legacy capnproto-dev g++
+    sudo apt-get install nodejs-dev nodejs-legacy libcapnp-dev g++
 
 ### From source
 
