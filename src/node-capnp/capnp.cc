@@ -1178,7 +1178,7 @@ public:
     v8::Local<v8::Object> obj = check(check(getFunctionTemplate<T>()
         ->GetFunction(v8::Isolate::GetCurrent()->GetCurrentContext()))
         ->NewInstance(v8::Isolate::GetCurrent()->GetCurrentContext()));
-    obj->SetAlignedPointerInInternalField(0, new WrappedObject<T>(obj, ptr));
+    obj->SetAlignedPointerInInternalField(0, new WrappedObject<T>(obj, ptr), v8::kEmbedderDataTypeTagDefault);
     return obj;
   }
 
@@ -1193,7 +1193,7 @@ public:
 
     v8::Local<v8::Object> obj(v8::Local<v8::Object>::Cast(hdl));
     if (getFunctionTemplate<T>()->HasInstance(obj)) {
-      return *reinterpret_cast<WrappedObject<T>*>(obj->GetAlignedPointerFromInternalField(0))->ptr;
+      return *reinterpret_cast<WrappedObject<T>*>(obj->GetAlignedPointerFromInternalField(0, v8::kEmbedderDataTypeTagDefault))->ptr;
     } else {
       v8::Isolate* isolate = v8::Isolate::GetCurrent();
       v8::Local<v8::Value> native;

@@ -16,12 +16,6 @@ jobs:
       - name: Test build module (linux-x64)
         run: npm i && file bin/linux-x64/capnp.node
 
-      # See https://github.com/electron/electron/issues/42510
-      - name: Configure electron SUID sandbox helper
-        run: |
-          sudo chown root: ./node_modules/electron/dist/chrome-sandbox
-          sudo chmod 4755 ./node_modules/electron/dist/chrome-sandbox
-
       - name: Run tests
         run: npm test
 

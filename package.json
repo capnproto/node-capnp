@@ -1,6 +1,6 @@
 {
   "name": "capnp",
-  "version": "0.6.0",
+  "version": "0.7.1",
   "description": "A wrapper for the C++ Cap'n Proto library",
   "keywords": [
     "capnproto",
@@ -21,15 +21,15 @@
   "main": "src/node-capnp/capnp.js",
   "types": "src/node-capnp/capnp.d.ts",
   "scripts": {
-    "install": "node ./build.js --dist-url=https://electronjs.org/headers --target=35.1.2",
-    "test": "electron src/node-capnp/capnp-test.js"
+    "install": "node ./build.js --dist-url=https://electronjs.org/headers --target=45.0.0",
+    "test": "electron --no-sandbox src/node-capnp/capnp-test.js"
   },
   "dependencies": {
-    "nan": "^2.17.0",
+    "nan": "^2.23.0",
     "yargs": "^17.6.2"
   },
   "devDependencies": {
-    "electron": "^35.1.2",
+    "electron": "^45.0.0",
     "node-gyp": "^11.2.0"
   },
   "repository": {
